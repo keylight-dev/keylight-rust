@@ -1,0 +1,10 @@
+[workspace]
+resolver = "2"
+members = ["keylight"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/keylight-dev/keylight-rust"
+authors = ["Keylight <dev@keylight.dev>"]
