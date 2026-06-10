@@ -6,6 +6,9 @@
 pub mod error;
 pub use error::{KeylightError, Result};
 
+pub mod config;
+pub use config::{KeylightConfig, KeylightConfigBuilder};
+
 pub mod lease;
 pub use lease::Lease;
 
