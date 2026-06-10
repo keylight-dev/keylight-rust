@@ -3,6 +3,9 @@
 //! Activate and validate license keys against a Keylight Worker, with offline
 //! Ed25519 lease verification. See the crate README for a quickstart.
 
+pub mod error;
+pub use error::{KeylightError, Result};
+
 pub mod lease;
 pub use lease::Lease;
 
