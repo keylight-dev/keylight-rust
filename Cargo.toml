@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["keylight", "keylight-cli", "demo-app"]
+members = ["keylight", "keylight-cli", "demo-app", "tauri-plugin-keylight"]
 
 [workspace.package]
 version = "0.1.0"
