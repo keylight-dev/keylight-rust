@@ -1,6 +1,8 @@
 use serde::Deserialize;
 use std::collections::HashMap;
 
+use crate::http::Transport;
+
 #[derive(Deserialize)]
 struct KeysetResponse { primary_kid: String, keys: Vec<KeyEntry> }
 #[derive(Deserialize)]
@@ -11,6 +13,21 @@ pub fn parse_keyset(json: &str) -> Option<(String, HashMap<String, String>)> {
     let r: KeysetResponse = serde_json::from_str(json).ok()?;
     let map = r.keys.into_iter().map(|k| (k.kid, k.public_key)).collect();
     Some((r.primary_kid, map))
+}
+
+/// Fetch and parse the tenant keyset from `{base}/{tenant}/.well-known/keylight-keys`.
+pub fn fetch_keyset(
+    transport: &dyn Transport,
+    base_url: &str,
+    tenant_id: &str,
+) -> Option<(String, HashMap<String, String>)> {
+    let url = format!("{base_url}/{tenant_id}/.well-known/keylight-keys");
+    if let crate::http::TransportOutcome::Response(r) = transport.get(&url, &[]) {
+        if r.status == 200 {
+            return parse_keyset(&r.body);
+        }
+    }
+    None
 }
 
 #[cfg(test)]
