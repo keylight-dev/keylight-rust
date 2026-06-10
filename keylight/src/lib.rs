@@ -5,3 +5,6 @@
 
 pub mod lease;
 pub use lease::Lease;
+
+pub mod verifier;
+pub use verifier::{verify_lease, VerifyResult, SKEW_SECONDS};
