@@ -1,15 +1,34 @@
 name: Release
 on: { push: { tags: ["v*"] } }
+
+# The binaries job creates/updates a GitHub Release, which needs write access
+# to repository contents (the default GITHUB_TOKEN is read-only otherwise).
+permissions:
+  contents: write
+
 jobs:
   crates:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
-      - run: cargo publish -p keylight --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+      # Idempotent: succeed if this version is already on crates.io so the
+      # release can be re-run (e.g. to (re)build binaries) without failing here.
+      - name: Publish keylight to crates.io
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          set +e
+          out=$(cargo publish -p keylight 2>&1); code=$?
+          echo "$out"
+          if [ $code -eq 0 ]; then exit 0; fi
+          echo "$out" | grep -qiE "already (exists|uploaded)" && { echo "already on crates.io — skipping"; exit 0; }
+          exit $code
   binaries:
     needs: crates
-    strategy: { matrix: { os: [macos-latest, ubuntu-latest, windows-latest] } }
+    strategy:
+      fail-fast: false
+      matrix: { os: [macos-latest, ubuntu-latest, windows-latest] }
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v5
