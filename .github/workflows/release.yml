@@ -28,11 +28,28 @@ jobs:
     needs: crates
     strategy:
       fail-fast: false
-      matrix: { os: [macos-latest, ubuntu-latest, windows-latest] }
+      matrix:
+        include:
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            ext: ""
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            ext: ""
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            ext: ".exe"
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo build -p keylight-cli --release
+      # Rename to a target-suffixed name so the three platforms don't collide,
+      # and upload only the executable (not the .d/.pdb build artifacts).
+      - name: Stage binary
+        shell: bash
+        run: |
+          mkdir -p dist
+          cp "target/release/keylight${{ matrix.ext }}" "dist/keylight-${{ matrix.target }}${{ matrix.ext }}"
       - uses: softprops/action-gh-release@v2
-        with: { files: "target/release/keylight*" }
+        with: { files: "dist/keylight-${{ matrix.target }}*" }
