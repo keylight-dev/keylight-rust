@@ -171,7 +171,7 @@ impl Keylight {
             let body = serde_json::Value::Object(map).to_string();
             if let Err(e) = self.post("deactivate", &body, &[]) { net_err = Some(e); }
         }
-        for a in [account::LICENSE_KEY, account::INSTANCE_ID, account::LEASE, account::LICENSE_EXPIRES_AT, account::LAST_VALIDATED_ONLINE, account::LAST_SEEN] {
+        for a in [account::LICENSE_KEY, account::INSTANCE_ID, account::LEASE, account::LICENSE_EXPIRES_AT, account::LAST_VALIDATED_ONLINE, account::LAST_SEEN, account::LAST_STATE] {
             self.store.delete(a)?;
         }
         match net_err { Some(e) => Err(e), None => Ok(()) }
@@ -184,7 +184,7 @@ impl Keylight {
         }
         let lease: Lease = serde_json::from_str(&self.store.get_string(account::LEASE)?).ok()?;
         let r = verify_lease(&lease, &self.config.trusted_keys, Self::now(), crate::SKEW_SECONDS);
-        if r.kid_known && r.signature_valid && !r.expired { Some(lease) } else { None }
+        if r.kid_known && r.signature_valid && !r.expired && lease.status != "expired" { Some(lease) } else { None }
     }
 
     pub fn has_entitlement(&self, feature: &str) -> bool {
