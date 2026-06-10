@@ -21,3 +21,6 @@ pub mod verifier;
 pub use verifier::{verify_lease, VerifyResult, SKEW_SECONDS};
 
 pub mod telemetry;
+
+pub mod store;
+pub use store::LicenseStore;
