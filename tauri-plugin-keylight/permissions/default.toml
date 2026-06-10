@@ -1,0 +1,5 @@
+"$schema" = "schemas/schema.json"
+
+[default]
+description = "Allows activating and validating licenses and checking entitlements through the Keylight plugin."
+permissions = ["allow-activate", "allow-validate", "allow-has-entitlement"]

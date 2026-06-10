@@ -66,12 +66,13 @@ This workspace contains:
 |-------|-------------|--------------|
 | [`keylight`](./keylight) | Core Rust SDK for any Rust application | [![crates.io](https://img.shields.io/crates/v/keylight.svg)](https://crates.io/crates/keylight) [![docs](https://docs.rs/keylight/badge.svg)](https://docs.rs/keylight) |
 | [`keylight-cli`](./keylight-cli) | `keylight` command-line tool | Prebuilt binaries on [GitHub Releases](https://github.com/keylight-dev/keylight-rust/releases) |
-| [`tauri-plugin-keylight`](./tauri-plugin-keylight) | Tauri v2 plugin (Rust side) + minimal JS shim | In this workspace (not yet published) |
+| [`tauri-plugin-keylight`](./tauri-plugin-keylight) | Tauri v2 plugin (Rust side) with capability permissions | In this workspace (installable via git) |
+| [`tauri-plugin-keylight-api`](./tauri-plugin-keylight) | Tauri v2 plugin JS/TS bindings (builds to ESM/CJS + `.d.ts`) | npm package (publishable; not yet on the public registry) |
 | [`keylight-notes-demo`](./demo-app) | "Keylight Notes" example app | Example (not published) |
 
-> The Tauri plugin and its JavaScript bindings are **experimental** today: the Rust plugin works,
-> but the JS side is a small shim and is not yet an npm package. Full TypeScript packaging is on
-> the roadmap.
+> The Tauri plugin is a complete Tauri v2 plugin — Rust commands with generated permissions plus a
+> typed npm package. The Rust crate and the npm package aren't on crates.io / npm yet, but both are
+> usable today: depend on the Rust side by git, and build/publish the JS bindings yourself.
 
 ## Quick Start
 
@@ -145,11 +146,24 @@ fn main() {
 }
 ```
 
-The plugin exposes three commands — `activate`, `validate`, and `has_entitlement`. A minimal
-TypeScript shim ships in [`tauri-plugin-keylight/guest-js/index.ts`](./tauri-plugin-keylight/guest-js/index.ts):
+Grant the plugin's default permission set in your capability file:
+
+```json
+// src-tauri/capabilities/default.json
+{
+  "permissions": ["keylight:default"]
+}
+```
+
+`keylight:default` allows `activate`, `validate`, and `has_entitlement` (per-command permissions
+`keylight:allow-activate` etc. are also generated).
+
+The typed JS/TS bindings are in [`tauri-plugin-keylight`](./tauri-plugin-keylight) and build to
+`dist-js/` (ESM, CJS, and `.d.ts`). Until they're on the public npm registry, build them locally
+(`npm install && npm run build` in that folder) or publish to your own registry — then:
 
 ```typescript
-import { activate, validate, hasEntitlement } from './guest-js';
+import { activate, validate, hasEntitlement } from 'tauri-plugin-keylight-api';
 
 await activate('USER-LICENSE-KEY');
 const ok = await validate();
@@ -157,9 +171,6 @@ if (await hasEntitlement('pro')) {
   // unlock pro features
 }
 ```
-
-> This is a deliberately small shim, not an npm package. A packaged `@keylight` plugin with
-> capabilities/permissions is planned.
 
 ## License Lifecycle
 

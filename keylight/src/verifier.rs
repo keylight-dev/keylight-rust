@@ -1,3 +1,6 @@
+//! Ed25519 lease verification with a fixed clock-skew tolerance ([`SKEW_SECONDS`]).
+//! This module is gated by the SP-0 conformance vectors.
+
 use crate::lease::Lease;
 use base64::Engine;
 use ed25519_dalek::{Signature, Verifier as _, VerifyingKey};

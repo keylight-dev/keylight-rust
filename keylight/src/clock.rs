@@ -1,3 +1,5 @@
+//! Heuristic detection of system-clock manipulation (backward/forward jumps).
+
 const BACKWARD_TOLERANCE: i64 = 3600; // 1h
 const FORWARD_JUMP_LIMIT: i64 = 30 * 24 * 60 * 60; // 30d
 

@@ -1,3 +1,5 @@
+//! [`KeylightConfig`] and its builder, including client-side key-format validation.
+
 use std::collections::HashMap;
 
 #[derive(Debug, Clone)]

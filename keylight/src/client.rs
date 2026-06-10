@@ -1,3 +1,6 @@
+//! The [`Keylight`] client: activation, validation, deactivation, offline state
+//! resolution, trials, the keyless beacon, refresh timing, and lifecycle events.
+
 use crate::clock::clock_manipulated;
 use crate::http::retry::{backoff_ms, clamp_sleep_ms, decide, RetryDecision, MAX_ATTEMPTS};
 use crate::http::{ureq_transport::UreqTransport, Transport, TransportOutcome};

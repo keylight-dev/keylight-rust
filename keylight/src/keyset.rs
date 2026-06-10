@@ -1,3 +1,5 @@
+//! Fetch and parse a tenant's trusted Ed25519 keyset from `/.well-known/keylight-keys`.
+
 use serde::Deserialize;
 use std::collections::HashMap;
 

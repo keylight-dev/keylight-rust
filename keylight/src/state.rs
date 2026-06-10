@@ -1,3 +1,7 @@
+//! License state, trial/keyless status, lifecycle events, and the pure state resolver.
+
+/// The high-level licensing status an app reacts to, resolved from the cached lease,
+/// trial, and free-tier configuration.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LicenseState {
     Trial { days_left: i64 },

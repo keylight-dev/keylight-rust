@@ -1,3 +1,6 @@
+//! License storage: the [`LicenseStore`] trait, stable account keys, per-OS device
+//! identity, and the default device-bound encrypted file store.
+
 pub mod device;
 pub mod encrypted_file;
 

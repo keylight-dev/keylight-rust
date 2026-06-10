@@ -1,3 +1,5 @@
+//! SDK/platform/app-version telemetry fields attached to API requests.
+
 /// SDK version baked at compile time.
 pub fn sdk_version() -> &'static str {
     env!("CARGO_PKG_VERSION")

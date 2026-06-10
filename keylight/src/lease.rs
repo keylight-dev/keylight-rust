@@ -1,3 +1,6 @@
+//! The signed `v3` [`Lease`] — the offline artifact — and reconstruction of its
+//! canonical signed payload.
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

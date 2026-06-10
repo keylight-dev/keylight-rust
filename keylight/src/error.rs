@@ -1,3 +1,5 @@
+//! The crate error type [`KeylightError`] and its [`Result`] alias.
+
 use thiserror::Error;
 
 #[derive(Debug, Error)]
