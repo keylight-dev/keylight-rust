@@ -27,3 +27,6 @@ pub use store::LicenseStore;
 
 pub mod state;
 pub use state::{LicenseState, TrialStatus, KeylessState, LicenseLifecycleEvent, resolve_state};
+
+pub mod clock;
+pub use clock::clock_manipulated;
