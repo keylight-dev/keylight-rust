@@ -19,17 +19,27 @@ struct ValidateResp { valid: bool, license_expires_at: Option<i64>, lease: Optio
 #[derive(Deserialize)]
 struct ErrorResp { error: Option<String> }
 
-pub struct Keylight { config: KeylightConfig, store: Arc<dyn LicenseStore>, transport: Arc<dyn Transport> }
+pub struct Keylight {
+    config: KeylightConfig,
+    store: Arc<dyn LicenseStore>,
+    transport: Arc<dyn Transport>,
+    on_event: Option<Box<dyn Fn(crate::state::LicenseLifecycleEvent) + Send + Sync>>,
+}
 
 impl Keylight {
     /// Construct with the default encrypted-file store + ureq transport.
     pub fn new(config: KeylightConfig) -> Result<Self> {
         let ns = format!("{}-{}", config.tenant_id, config.product_id);
-        Ok(Self { store: Arc::new(EncryptedFileStore::new(&ns)?), transport: Arc::new(UreqTransport::default()), config })
+        Ok(Self { store: Arc::new(EncryptedFileStore::new(&ns)?), transport: Arc::new(UreqTransport::default()), config, on_event: None })
     }
     /// Construct with custom store + transport (tests, alternate backends).
     pub fn with_parts(config: KeylightConfig, store: Arc<dyn LicenseStore>, transport: Arc<dyn Transport>) -> Self {
-        Self { config, store, transport }
+        Self { config, store, transport, on_event: None }
+    }
+    /// Register a handler invoked when the resolved license state crosses a lifecycle transition.
+    pub fn with_event_handler(mut self, handler: impl Fn(crate::state::LicenseLifecycleEvent) + Send + Sync + 'static) -> Self {
+        self.on_event = Some(Box::new(handler));
+        self
     }
 
     fn request_id() -> String {
@@ -120,6 +130,8 @@ impl Keylight {
     pub fn validate(&self) -> Result<ValidationResult> {
         let key = self.store.get_string(account::LICENSE_KEY).ok_or(KeylightError::NoStoredLicense)?;
         let instance = self.store.get_string(account::INSTANCE_ID).ok_or(KeylightError::NoStoredLicense)?;
+        let prev_state = self.state();
+        let prev_expiry = self.store.get_string(account::LICENSE_EXPIRES_AT).and_then(|s| s.parse::<i64>().ok());
         let mut map = serde_json::Map::new();
         map.insert("license_key".into(), key.into());
         map.insert("instance_id".into(), instance.into());
@@ -133,12 +145,18 @@ impl Keylight {
         let resp: ValidateResp = serde_json::from_str(&text).map_err(|_| KeylightError::InvalidResponse)?;
         if let Some(lease) = &resp.lease { self.verify_or_reject(lease)?; }
         if !resp.valid {
-            // Preserve fallback/expired lease so the manager can resolve .limited/.expired.
+            // Preserve fallback/expired lease so the manager (and state()) can resolve .limited/.expired.
+            if let Some(lease) = &resp.lease {
+                self.store.set_string(account::LEASE, &serde_json::to_string(lease).unwrap())?;
+                self.save_expiry(resp.license_expires_at)?;
+            }
+            self.emit_lifecycle(&prev_state, prev_expiry);
             return Ok(ValidationResult { valid: false, lease: resp.lease, license_expires_at: resp.license_expires_at, error: resp.error });
         }
         if let Some(lease) = &resp.lease { self.store.set_string(account::LEASE, &serde_json::to_string(lease).unwrap())?; }
         self.save_expiry(resp.license_expires_at)?;
         self.touch_last_seen()?; self.touch_validated_online()?;
+        self.emit_lifecycle(&prev_state, prev_expiry);
         Ok(ValidationResult { valid: true, lease: resp.lease, license_expires_at: resp.license_expires_at, error: None })
     }
 
@@ -244,6 +262,54 @@ impl Keylight {
         };
         resolve_state(status.as_deref(), current, self.has_stored_license(), &self.check_trial(), self.config.free_tier_enabled)
     }
+}
+
+impl Keylight {
+    /// Validate now only if enough time has passed (debounce 5min, stale 6h, or near expiry).
+    pub fn refresh_if_needed(&self) -> Result<Option<ValidationResult>> {
+        if !self.has_stored_license() { return Ok(None); }
+        let last = self.store.get_string(account::LAST_VALIDATED_ONLINE).and_then(|s| s.parse::<i64>().ok());
+        if let Some(last) = last {
+            if Self::now() - last < REFRESH_DEBOUNCE { return Ok(None); }
+            let near_expiry = self.store.get_string(account::LICENSE_EXPIRES_AT)
+                .and_then(|s| s.parse::<i64>().ok())
+                .map(|exp| exp - Self::now() < 86400).unwrap_or(false);
+            if Self::now() - last < REFRESH_STALE && !near_expiry { return Ok(None); }
+        }
+        Ok(Some(self.validate()?))
+    }
+    /// Called on app launch: validate if a license is stored, else no-op.
+    pub fn check_on_launch(&self) -> Result<()> {
+        if self.has_stored_license() { let _ = self.refresh_if_needed()?; }
+        Ok(())
+    }
+    /// Hosted upgrade URL pre-filled with the cached key (parity with Swift upgradeURL).
+    pub fn upgrade_url(&self) -> Option<String> {
+        let key = self.cached_license_key()?;
+        Some(format!("https://portal.keylight.dev/p/{}/upgrade/{}?key={}", self.config.tenant_id, self.config.product_id, urlencode(&key)))
+    }
+
+    /// Compute the post-validation state and fire a lifecycle event if the resolved
+    /// state crossed a transition. Persists the new state label. Errors are swallowed.
+    fn emit_lifecycle(&self, prev_state: &LicenseState, prev_expiry: Option<i64>) {
+        let next_state = self.state();
+        let expiry_moved_later = match (prev_expiry, self.store.get_string(account::LICENSE_EXPIRES_AT).and_then(|s| s.parse::<i64>().ok())) {
+            (Some(p), Some(n)) => n > p,
+            (None, Some(_)) => true,
+            _ => false,
+        };
+        if let Some(ev) = crate::state::lifecycle_event(prev_state, &next_state, expiry_moved_later) {
+            self.store.set_string(account::LAST_STATE, &format!("{:?}", next_state)).ok();
+            if let Some(h) = &self.on_event { h(ev); }
+        }
+    }
+}
+
+const REFRESH_DEBOUNCE: i64 = 300;     // 5 min
+const REFRESH_STALE: i64 = 21600;      // 6 h
+
+fn urlencode(s: &str) -> String {
+    s.bytes().map(|b| match b { b'A'..=b'Z'|b'a'..=b'z'|b'0'..=b'9'|b'-'|b'_'|b'.'|b'~' => (b as char).to_string(), _ => format!("%{:02X}", b) }).collect()
 }
 
 fn hostname_or(default: &str) -> String { std::env::var("HOSTNAME").ok().filter(|s| !s.is_empty()).unwrap_or_else(|| default.to_string()) }

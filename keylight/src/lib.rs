@@ -31,7 +31,7 @@ pub mod client;
 pub use client::{Keylight, ActivationResult, ValidationResult};
 
 pub mod state;
-pub use state::{LicenseState, TrialStatus, KeylessState, LicenseLifecycleEvent, resolve_state};
+pub use state::{LicenseState, TrialStatus, KeylessState, LicenseLifecycleEvent, resolve_state, lifecycle_event};
 
 pub mod clock;
 pub use clock::clock_manipulated;

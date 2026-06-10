@@ -37,6 +37,17 @@ pub fn resolve_state(
     }
 }
 
+pub fn lifecycle_event(prev: &LicenseState, next: &LicenseState, expiry_moved_later: bool) -> Option<LicenseLifecycleEvent> {
+    use LicenseState::*;
+    match (prev, next) {
+        (Licensed, Licensed) if expiry_moved_later => Some(LicenseLifecycleEvent::Renewed),
+        (Licensed, Expired) | (Licensed, Limited) => Some(LicenseLifecycleEvent::Cancelled),
+        (Expired, Licensed) | (Limited, Licensed) | (Invalid, Licensed) => Some(LicenseLifecycleEvent::Restored),
+        (_, Expired) if !matches!(prev, Expired) => Some(LicenseLifecycleEvent::Expired),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -63,5 +74,33 @@ mod tests {
     #[test]
     fn keyless_wire_strings() {
         assert_eq!(KeylessState::FreeTier.wire(), "free_tier");
+    }
+
+    use LicenseState as S;
+    use LicenseLifecycleEvent as E;
+    #[test]
+    fn renewed_when_licensed_and_expiry_later() {
+        assert_eq!(lifecycle_event(&S::Licensed, &S::Licensed, true), Some(E::Renewed));
+        assert_eq!(lifecycle_event(&S::Licensed, &S::Licensed, false), None);
+    }
+    #[test]
+    fn cancelled_on_licensed_to_expired_or_limited() {
+        assert_eq!(lifecycle_event(&S::Licensed, &S::Expired, false), Some(E::Cancelled));
+        assert_eq!(lifecycle_event(&S::Licensed, &S::Limited, false), Some(E::Cancelled));
+    }
+    #[test]
+    fn restored_on_recovery_to_licensed() {
+        assert_eq!(lifecycle_event(&S::Expired, &S::Licensed, false), Some(E::Restored));
+        assert_eq!(lifecycle_event(&S::Limited, &S::Licensed, false), Some(E::Restored));
+        assert_eq!(lifecycle_event(&S::Invalid, &S::Licensed, false), Some(E::Restored));
+    }
+    #[test]
+    fn expired_when_crossing_into_expired_from_non_expired() {
+        assert_eq!(lifecycle_event(&S::Trial { days_left: 1 }, &S::Expired, false), Some(E::Expired));
+    }
+    #[test]
+    fn no_event_on_noop_transitions() {
+        assert_eq!(lifecycle_event(&S::Trial { days_left: 3 }, &S::Trial { days_left: 2 }, false), None);
+        assert_eq!(lifecycle_event(&S::Expired, &S::Expired, false), None);
     }
 }
