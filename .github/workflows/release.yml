@@ -55,6 +55,10 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
+            echo "NPM_TOKEN not set — skipping npm publish (re-run this job once it's configured)."
+            exit 0
+          fi
           npm ci
           # Idempotent: skip if this version is already published.
           if npm publish --access public 2>publish.err; then
