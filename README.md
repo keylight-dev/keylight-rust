@@ -65,7 +65,7 @@ This workspace contains:
 | Crate | Description | Distribution |
 |-------|-------------|--------------|
 | [`keylight`](./keylight) | Core Rust SDK for any Rust application | [![crates.io](https://img.shields.io/crates/v/keylight.svg)](https://crates.io/crates/keylight) [![docs](https://docs.rs/keylight/badge.svg)](https://docs.rs/keylight) |
-| [`keylight-cli`](./keylight-cli) | `keylight` command-line tool | Prebuilt binaries on [GitHub Releases](https://github.com/keylight-dev/keylight-rust/releases) |
+| [`keylight-cli`](./keylight-cli) | Reference CLI / template for white-labeled `yourapp activate` commands (also a dev/ops & CI utility) | Prebuilt binaries on [GitHub Releases](https://github.com/keylight-dev/keylight-rust/releases) |
 | [`tauri-plugin-keylight`](./tauri-plugin-keylight) | Tauri v2 plugin (Rust side) with capability permissions | [![crates.io](https://img.shields.io/crates/v/tauri-plugin-keylight.svg)](https://crates.io/crates/tauri-plugin-keylight) |
 | [`tauri-plugin-keylight-api`](./tauri-plugin-keylight) | Tauri v2 plugin JS/TS bindings (ESM/CJS + `.d.ts`) | [![npm](https://img.shields.io/npm/v/tauri-plugin-keylight-api.svg)](https://www.npmjs.com/package/tauri-plugin-keylight-api) |
 | [`keylight-notes-demo`](./demo-app) | "Keylight Notes" example app | Example (not published) |
@@ -309,18 +309,39 @@ Built with `KeylightConfig::builder(tenant_id, product_id)`:
 
 ## CLI & Demo
 
-The `keylight` CLI wraps the SDK (env vars: `KEYLIGHT_TENANT`, `KEYLIGHT_PRODUCT`,
-`KEYLIGHT_SDK_KEY`, `KEYLIGHT_BASE_URL`):
+### `keylight-cli` — a reference to build on, not a product to rebrand
+
+`keylight-cli` is a **reference implementation**: a thin [clap](https://docs.rs/clap) wrapper
+around the SDK (see [`keylight-cli/src/main.rs`](./keylight-cli/src/main.rs)). Its main purpose is
+to be the worked example for **adding white-labeled licensing commands to your own CLI**.
+
+You don't ship this binary renamed — you embed the `keylight` *library* in **your** tool, bake in
+your tenant/product, and expose your own branded subcommand. The end user then just runs
+`yourapp activate <KEY>` (no `--tenant`/`--product` to pass):
+
+```rust
+// In your CLI `mole`: `mole activate <KEY>`
+Cmd::Activate { key } => {
+    let kl = Keylight::new(KeylightConfig::builder("mole-co", "mole").build())?;
+    let unlocked = kl.activate(&key)?.activated;
+    println!("{}", if unlocked { "Mole Pro unlocked 🎉" } else { "Invalid key" });
+}
+// gate features elsewhere:  if kl.has_entitlement("pro") { /* ... */ }
+```
+
+You can also run the **generic** binary as-is — useful for **local development, testing a tenant,
+or exit-code gating in scripts/CI** (it is not a customer-facing tool):
 
 ```bash
 cargo install --git https://github.com/keylight-dev/keylight-rust keylight-cli
 
 keylight --tenant your-tenant --product your-product --fetch-keys activate USER-LICENSE-KEY
-keylight --tenant your-tenant --product your-product --fetch-keys status
-keylight --tenant your-tenant --product your-product deactivate
+keylight --tenant your-tenant --product your-product validate || echo "license invalid"
 ```
 
-The `keylight-notes-demo` app shows entitlement gating end-to-end (free = 3 notes; the `pro`
+### `keylight-notes-demo`
+
+The demo app shows entitlement gating end-to-end (free = 3 notes; the `pro`
 entitlement unlocks unlimited notes + export) against the live public demo tenant:
 
 ```bash
