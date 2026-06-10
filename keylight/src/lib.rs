@@ -24,3 +24,6 @@ pub mod telemetry;
 
 pub mod store;
 pub use store::LicenseStore;
+
+pub mod state;
+pub use state::{LicenseState, TrialStatus, KeylessState, LicenseLifecycleEvent, resolve_state};
