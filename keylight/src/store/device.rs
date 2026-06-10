@@ -40,7 +40,7 @@ fn persisted_fallback_id() -> String {
     use std::io::Write;
     let dir = directories::ProjectDirs::from("dev", "keylight", "keylight")
         .map(|p| p.config_dir().to_path_buf())
-        .unwrap_or_else(|| std::env::temp_dir());
+        .unwrap_or_else(std::env::temp_dir);
     let _ = std::fs::create_dir_all(&dir);
     let path = dir.join("device-id");
     if let Ok(existing) = std::fs::read_to_string(&path) {
