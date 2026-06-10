@@ -2,6 +2,8 @@ use crate::http::{Transport, TransportOutcome, ureq_transport::UreqTransport};
 use crate::http::retry::{decide, RetryDecision, MAX_ATTEMPTS, backoff_ms, clamp_sleep_ms};
 use crate::store::{account, LicenseStore, encrypted_file::EncryptedFileStore};
 use crate::{KeylightConfig, KeylightError, Lease, Result, verify_lease, telemetry};
+use crate::state::{TrialStatus, KeylessState, LicenseState, resolve_state};
+use crate::clock::clock_manipulated;
 use serde::Deserialize;
 use std::sync::Arc;
 
@@ -178,6 +180,70 @@ impl Keylight {
     }
     fn touch_last_seen(&self) -> Result<()> { self.store.set_string(account::LAST_SEEN, &Self::now().to_string()) }
     fn touch_validated_online(&self) -> Result<()> { self.store.set_string(account::LAST_VALIDATED_ONLINE, &Self::now().to_string()) }
+}
+
+impl Keylight {
+    pub fn start_trial(&self) -> Result<()> {
+        if self.store.get_string(account::TRIAL_START).is_none() {
+            self.store.set_string(account::TRIAL_START, &Self::now().to_string())?;
+        }
+        if self.store.get_string(account::FREE_TIER_INSTANCE_ID).is_none() {
+            self.store.set_string(account::FREE_TIER_INSTANCE_ID, &crate::store::device::uuid_v4_pub())?;
+        }
+        Ok(())
+    }
+    pub fn check_trial(&self) -> TrialStatus {
+        let start = match self.store.get_string(account::TRIAL_START).and_then(|s| s.parse::<i64>().ok()) {
+            Some(v) => v, None => return TrialStatus::NotStarted,
+        };
+        let days_elapsed = (Self::now() - start) / 86400;
+        let days_left = self.config.trial_duration_days as i64 - days_elapsed;
+        if days_left > 0 { TrialStatus::Active { days_left } } else { TrialStatus::Expired }
+    }
+    pub fn is_clock_manipulated(&self) -> bool {
+        match self.store.get_string(account::LAST_SEEN).and_then(|s| s.parse::<i64>().ok()) {
+            Some(last) => { let m = clock_manipulated(last, Self::now()); if !m { let _ = self.touch_last_seen(); } m }
+            None => { let _ = self.touch_last_seen(); false }
+        }
+    }
+    pub fn free_tier_instance_id(&self) -> Result<String> {
+        if let Some(id) = self.store.get_string(account::FREE_TIER_INSTANCE_ID) { return Ok(id); }
+        let id = crate::store::device::uuid_v4_pub();
+        self.store.set_string(account::FREE_TIER_INSTANCE_ID, &id)?;
+        Ok(id)
+    }
+    /// Anonymous keyless beacon, debounced 24h or on state change. Errors swallowed.
+    pub fn report_keyless_state(&self, state: KeylessState) {
+        let last_state = self.store.get_string(account::KEYLESS_LAST_STATE);
+        let last_ping = self.store.get_string(account::LAST_KEYLESS_PING_AT).and_then(|s| s.parse::<i64>().ok());
+        let changed = last_state.as_deref() != Some(state.wire());
+        let within = last_ping.map(|t| Self::now() - t < 86400).unwrap_or(false);
+        if !changed && within { return; }
+        let instance = match self.free_tier_instance_id() { Ok(i) => i, Err(_) => return };
+        let mut map = serde_json::Map::new();
+        map.insert("instance_id".into(), instance.into());
+        map.insert("state".into(), state.wire().into());
+        let body = self.body_with_telemetry(map);
+        let url = format!("{}/{}/{}/keyless", self.config.base_url, self.config.tenant_id, self.config.product_id);
+        if let TransportOutcome::Response(r) = self.transport.post_json(&url, &self.headers(), &body) {
+            if r.status == 200 {
+                let _ = self.store.set_string(account::KEYLESS_LAST_STATE, state.wire());
+                let _ = self.store.set_string(account::LAST_KEYLESS_PING_AT, &Self::now().to_string());
+            }
+        }
+    }
+    /// Resolve the current high-level state from cached data (no network).
+    pub fn state(&self) -> LicenseState {
+        let lease = self.store.get_string(account::LEASE).and_then(|s| serde_json::from_str::<Lease>(&s).ok());
+        let (status, current) = match &lease {
+            Some(l) => {
+                let r = verify_lease(l, &self.config.trusted_keys, Self::now(), crate::SKEW_SECONDS);
+                (if r.kid_known && r.signature_valid { Some(l.status.clone()) } else { None }, !r.expired)
+            }
+            None => (None, false),
+        };
+        resolve_state(status.as_deref(), current, self.has_stored_license(), &self.check_trial(), self.config.free_tier_enabled)
+    }
 }
 
 fn hostname_or(default: &str) -> String { std::env::var("HOSTNAME").ok().filter(|s| !s.is_empty()).unwrap_or_else(|| default.to_string()) }

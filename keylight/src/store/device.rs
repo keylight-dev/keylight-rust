@@ -52,6 +52,9 @@ fn persisted_fallback_id() -> String {
     id
 }
 
+/// Public wrapper around the internal UUIDv4 generator (used by the client for free-tier ids).
+pub fn uuid_v4_pub() -> String { uuid_v4() }
+
 /// Tiny UUIDv4 from `rand` (avoids a uuid dependency).
 fn uuid_v4() -> String {
     use rand::Rng;
