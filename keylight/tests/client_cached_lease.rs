@@ -33,4 +33,5 @@ fn no_lease_means_no_entitlement_and_no_cached_lease() {
     let kl = Keylight::with_parts(cfg, store, Arc::new(Noop));
     assert!(kl.cached_lease().is_none());
     assert!(!kl.has_entitlement("pro"));
+    assert!(kl.cached_license_expires_at().is_none());
 }

@@ -381,6 +381,11 @@ impl Keylight {
     pub fn cached_license_key(&self) -> Option<String> {
         self.store.get_string(account::LICENSE_KEY)
     }
+    /// The cached license expiry (epoch seconds), if one was stored on the last
+    /// activate/validate. Parity with Swift `getCachedLicenseExpiresAt`.
+    pub fn cached_license_expires_at(&self) -> Option<i64> {
+        self.store.get_i64(account::LICENSE_EXPIRES_AT)
+    }
 
     fn save_expiry(&self, e: Option<i64>) -> Result<()> {
         match e {
