@@ -6,6 +6,10 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
+readme = "../README.md"
+documentation = "https://docs.rs/keylight"
+keywords = ["licensing", "license", "ed25519", "sdk", "activation"]
+categories = ["authentication", "api-bindings"]
 
 [dependencies]
 ureq = { version = "2.10", features = ["json", "tls"] }
