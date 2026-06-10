@@ -1,0 +1,10 @@
+[package]
+name = "keylight-notes-demo"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+keylight = { path = "../keylight" }
+clap = { version = "4", features = ["derive"] }
