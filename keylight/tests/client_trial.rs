@@ -1,20 +1,36 @@
-use keylight::store::encrypted_file::EncryptedFileStore;
+use keylight::http::{HttpResponse, Transport, TransportOutcome};
 use keylight::store::device::FixedDeviceIdentity;
-use keylight::{Keylight, KeylightConfig, TrialStatus, LicenseState};
-use keylight::http::{Transport, TransportOutcome, HttpResponse};
+use keylight::store::encrypted_file::EncryptedFileStore;
+use keylight::{Keylight, KeylightConfig, LicenseState, TrialStatus};
 use std::sync::Arc;
 
 struct Noop;
 impl Transport for Noop {
-    fn post_json(&self, _:&str,_:&[(String,String)],_:&str)->TransportOutcome { TransportOutcome::Response(HttpResponse{status:200,body:"{}".into(),retry_after:None}) }
-    fn get(&self,_:&str,_:&[(String,String)])->TransportOutcome { TransportOutcome::Response(HttpResponse{status:200,body:"{}".into(),retry_after:None}) }
+    fn post_json(&self, _: &str, _: &[(String, String)], _: &str) -> TransportOutcome {
+        TransportOutcome::Response(HttpResponse {
+            status: 200,
+            body: "{}".into(),
+            retry_after: None,
+        })
+    }
+    fn get(&self, _: &str, _: &[(String, String)]) -> TransportOutcome {
+        TransportOutcome::Response(HttpResponse {
+            status: 200,
+            body: "{}".into(),
+            retry_after: None,
+        })
+    }
 }
 
 fn client(dir: &str, free_tier: bool) -> Keylight {
     let d = std::env::temp_dir().join(dir);
     let _ = std::fs::remove_dir_all(&d);
-    let store = Arc::new(EncryptedFileStore::at_dir(d, &FixedDeviceIdentity("dev".into())).unwrap());
-    let cfg = KeylightConfig::builder("t","p").trial_duration_days(14).free_tier_enabled(free_tier).build();
+    let store =
+        Arc::new(EncryptedFileStore::at_dir(d, &FixedDeviceIdentity("dev".into())).unwrap());
+    let cfg = KeylightConfig::builder("t", "p")
+        .trial_duration_days(14)
+        .free_tier_enabled(free_tier)
+        .build();
     Keylight::with_parts(cfg, store, Arc::new(Noop))
 }
 

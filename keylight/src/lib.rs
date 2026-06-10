@@ -23,15 +23,17 @@ pub use verifier::{verify_lease, VerifyResult, SKEW_SECONDS};
 pub mod telemetry;
 
 pub mod store;
-pub use store::LicenseStore;
+pub use store::device::{DeviceIdentity, FixedDeviceIdentity, SystemDeviceIdentity};
 pub use store::encrypted_file::EncryptedFileStore;
-pub use store::device::{DeviceIdentity, SystemDeviceIdentity, FixedDeviceIdentity};
+pub use store::LicenseStore;
 
 pub mod client;
-pub use client::{Keylight, ActivationResult, ValidationResult};
+pub use client::{ActivationResult, Keylight, ValidationResult};
 
 pub mod state;
-pub use state::{LicenseState, TrialStatus, KeylessState, LicenseLifecycleEvent, resolve_state, lifecycle_event};
+pub use state::{
+    lifecycle_event, resolve_state, KeylessState, LicenseLifecycleEvent, LicenseState, TrialStatus,
+};
 
 pub mod clock;
 pub use clock::clock_manipulated;

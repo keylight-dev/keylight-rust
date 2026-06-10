@@ -4,9 +4,15 @@ use std::collections::HashMap;
 use crate::http::Transport;
 
 #[derive(Deserialize)]
-struct KeysetResponse { primary_kid: String, keys: Vec<KeyEntry> }
+struct KeysetResponse {
+    primary_kid: String,
+    keys: Vec<KeyEntry>,
+}
 #[derive(Deserialize)]
-struct KeyEntry { kid: String, public_key: String }
+struct KeyEntry {
+    kid: String,
+    public_key: String,
+}
 
 /// Parse a `.well-known/keylight-keys` JSON body into a kid->pub map + primary kid.
 pub fn parse_keyset(json: &str) -> Option<(String, HashMap<String, String>)> {
@@ -35,7 +41,8 @@ mod tests {
     use super::*;
     #[test]
     fn parses_demo_keyset_shape() {
-        let json = r#"{"primary_kid":"k1","keys":[{"kid":"k1","alg":"ed25519","public_key":"AAAA"}]}"#;
+        let json =
+            r#"{"primary_kid":"k1","keys":[{"kid":"k1","alg":"ed25519","public_key":"AAAA"}]}"#;
         let (primary, map) = parse_keyset(json).unwrap();
         assert_eq!(primary, "k1");
         assert_eq!(map.get("k1").unwrap(), "AAAA");

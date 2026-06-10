@@ -35,7 +35,11 @@ pub fn decide(status: u16, attempt: u32, retry_after_secs: Option<u64>) -> Retry
         return RetryDecision::Stop;
     }
     let ms = if status == 429 {
-        clamp_sleep_ms(retry_after_secs.map(|s| s * 1000).unwrap_or_else(|| backoff_ms(attempt)))
+        clamp_sleep_ms(
+            retry_after_secs
+                .map(|s| s * 1000)
+                .unwrap_or_else(|| backoff_ms(attempt)),
+        )
     } else {
         clamp_sleep_ms(backoff_ms(attempt))
     };

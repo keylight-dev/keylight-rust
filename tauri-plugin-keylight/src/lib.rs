@@ -33,7 +33,11 @@ fn has_entitlement(state: State<'_, KeylightState>, feature: String) -> bool {
 /// Initialize with a prebuilt config (the host app supplies tenant/product/keys).
 pub fn init<R: Runtime>(config: KeylightConfig) -> TauriPlugin<R> {
     Builder::new("keylight")
-        .invoke_handler(tauri::generate_handler![activate, validate, has_entitlement])
+        .invoke_handler(tauri::generate_handler![
+            activate,
+            validate,
+            has_entitlement
+        ])
         .setup(move |app, _api| {
             let kl = Keylight::new(config.clone())?;
             app.manage(KeylightState(Arc::new(kl)));

@@ -1,39 +1,64 @@
 /// Stable per-device identifier (parity with Swift SystemDeviceIdentity).
-pub trait DeviceIdentity: Send + Sync { fn stable_id(&self) -> String; }
+pub trait DeviceIdentity: Send + Sync {
+    fn stable_id(&self) -> String;
+}
 
 pub struct SystemDeviceIdentity;
 impl DeviceIdentity for SystemDeviceIdentity {
-    fn stable_id(&self) -> String { read_machine_id().unwrap_or_else(persisted_fallback_id) }
+    fn stable_id(&self) -> String {
+        read_machine_id().unwrap_or_else(persisted_fallback_id)
+    }
 }
 
 /// Caller-provided fixed id (parity with Swift FixedDeviceIdentity), for tests/CI.
 pub struct FixedDeviceIdentity(pub String);
-impl DeviceIdentity for FixedDeviceIdentity { fn stable_id(&self) -> String { self.0.clone() } }
+impl DeviceIdentity for FixedDeviceIdentity {
+    fn stable_id(&self) -> String {
+        self.0.clone()
+    }
+}
 
 #[cfg(target_os = "linux")]
 fn read_machine_id() -> Option<String> {
-    std::fs::read_to_string("/etc/machine-id").ok()
+    std::fs::read_to_string("/etc/machine-id")
+        .ok()
         .or_else(|| std::fs::read_to_string("/var/lib/dbus/machine-id").ok())
-        .map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
 }
 #[cfg(target_os = "macos")]
 fn read_machine_id() -> Option<String> {
     let out = std::process::Command::new("ioreg")
-        .args(["-rd1", "-c", "IOPlatformExpertDevice"]).output().ok()?;
+        .args(["-rd1", "-c", "IOPlatformExpertDevice"])
+        .output()
+        .ok()?;
     let text = String::from_utf8_lossy(&out.stdout);
-    text.lines().find(|l| l.contains("IOPlatformUUID"))
-        .and_then(|l| l.split('"').nth(3)).map(|s| s.to_string())
+    text.lines()
+        .find(|l| l.contains("IOPlatformUUID"))
+        .and_then(|l| l.split('"').nth(3))
+        .map(|s| s.to_string())
 }
 #[cfg(target_os = "windows")]
 fn read_machine_id() -> Option<String> {
     let out = std::process::Command::new("reg")
-        .args(["query", r"HKLM\SOFTWARE\Microsoft\Cryptography", "/v", "MachineGuid"])
-        .output().ok()?;
+        .args([
+            "query",
+            r"HKLM\SOFTWARE\Microsoft\Cryptography",
+            "/v",
+            "MachineGuid",
+        ])
+        .output()
+        .ok()?;
     let text = String::from_utf8_lossy(&out.stdout);
-    text.split_whitespace().last().map(|s| s.to_string()).filter(|s| !s.is_empty())
+    text.split_whitespace()
+        .last()
+        .map(|s| s.to_string())
+        .filter(|s| !s.is_empty())
 }
 #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
-fn read_machine_id() -> Option<String> { None }
+fn read_machine_id() -> Option<String> {
+    None
+}
 
 /// Last resort: a random UUID persisted in the config dir, so the id is stable per install.
 fn persisted_fallback_id() -> String {
@@ -45,15 +70,21 @@ fn persisted_fallback_id() -> String {
     let path = dir.join("device-id");
     if let Ok(existing) = std::fs::read_to_string(&path) {
         let t = existing.trim();
-        if !t.is_empty() { return t.to_string(); }
+        if !t.is_empty() {
+            return t.to_string();
+        }
     }
     let id = uuid_v4();
-    if let Ok(mut f) = std::fs::File::create(&path) { let _ = f.write_all(id.as_bytes()); }
+    if let Ok(mut f) = std::fs::File::create(&path) {
+        let _ = f.write_all(id.as_bytes());
+    }
     id
 }
 
 /// Public wrapper around the internal UUIDv4 generator (used by the client for free-tier ids).
-pub fn uuid_v4_pub() -> String { uuid_v4() }
+pub fn uuid_v4_pub() -> String {
+    uuid_v4()
+}
 
 /// Tiny UUIDv4 from `rand` (avoids a uuid dependency).
 fn uuid_v4() -> String {
@@ -70,7 +101,9 @@ fn uuid_v4() -> String {
 mod tests {
     use super::*;
     #[test]
-    fn fixed_identity_returns_value() { assert_eq!(FixedDeviceIdentity("abc".into()).stable_id(), "abc"); }
+    fn fixed_identity_returns_value() {
+        assert_eq!(FixedDeviceIdentity("abc".into()).stable_id(), "abc");
+    }
     #[test]
     fn system_identity_is_nonempty_and_stable() {
         let a = SystemDeviceIdentity.stable_id();
@@ -78,5 +111,7 @@ mod tests {
         assert_eq!(a, SystemDeviceIdentity.stable_id());
     }
     #[test]
-    fn uuid_v4_has_version_nibble() { assert_eq!(uuid_v4().chars().nth(14).unwrap(), '4'); }
+    fn uuid_v4_has_version_nibble() {
+        assert_eq!(uuid_v4().chars().nth(14).unwrap(), '4');
+    }
 }

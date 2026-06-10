@@ -18,15 +18,27 @@ fn handle(res: Result<ureq::Response, ureq::Error>) -> TransportOutcome {
     match res {
         Ok(resp) => {
             let status = resp.status();
-            let retry_after = resp.header("Retry-After").and_then(|h| h.parse::<u64>().ok());
+            let retry_after = resp
+                .header("Retry-After")
+                .and_then(|h| h.parse::<u64>().ok());
             let body = resp.into_string().unwrap_or_default();
-            TransportOutcome::Response(HttpResponse { status, body, retry_after })
+            TransportOutcome::Response(HttpResponse {
+                status,
+                body,
+                retry_after,
+            })
         }
         Err(ureq::Error::Status(_, resp)) => {
             let status = resp.status();
-            let retry_after = resp.header("Retry-After").and_then(|h| h.parse::<u64>().ok());
+            let retry_after = resp
+                .header("Retry-After")
+                .and_then(|h| h.parse::<u64>().ok());
             let body = resp.into_string().unwrap_or_default();
-            TransportOutcome::Response(HttpResponse { status, body, retry_after })
+            TransportOutcome::Response(HttpResponse {
+                status,
+                body,
+                retry_after,
+            })
         }
         Err(ureq::Error::Transport(t)) => {
             use ureq::ErrorKind::*;
