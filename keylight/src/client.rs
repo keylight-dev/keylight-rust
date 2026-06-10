@@ -120,7 +120,7 @@ impl Keylight {
                     }
                     match decide(r.status, attempt, r.retry_after) {
                         RetryDecision::RetryAfter(ms) => {
-                            std::thread::sleep(std::time::Duration::from_millis(ms));
+                            std::thread::sleep(std::time::Duration::from_millis(ms + jitter_ms()));
                             continue;
                         }
                         RetryDecision::Stop => {
@@ -144,9 +144,9 @@ impl Keylight {
                     }
                 }
                 TransportOutcome::Transient(_) if attempt < MAX_ATTEMPTS => {
-                    std::thread::sleep(std::time::Duration::from_millis(clamp_sleep_ms(
-                        backoff_ms(attempt),
-                    )));
+                    std::thread::sleep(std::time::Duration::from_millis(
+                        clamp_sleep_ms(backoff_ms(attempt)) + jitter_ms(),
+                    ));
                     continue;
                 }
                 TransportOutcome::Transient(e) | TransportOutcome::Terminal(e) => {
@@ -628,4 +628,11 @@ fn hostname_or(default: &str) -> String {
         .ok()
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| default.to_string())
+}
+
+/// Small random backoff jitter (0..250ms) to avoid synchronized retries
+/// (the retry policy in `http::retry` stays pure; jitter is applied here).
+fn jitter_ms() -> u64 {
+    use rand::Rng;
+    rand::thread_rng().gen_range(0..250)
 }

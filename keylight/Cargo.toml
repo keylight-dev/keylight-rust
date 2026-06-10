@@ -18,6 +18,3 @@ blake3 = "1.5"
 directories = "5"
 thiserror = "1"
 rand = "0.8"
-
-[dev-dependencies]
-mockito = "1.5"
