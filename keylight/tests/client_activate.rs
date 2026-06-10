@@ -25,6 +25,9 @@ fn activate_rejects_unverifiable_lease() {
     let kl = Keylight::with_parts(cfg, store, Arc::new(MockOk(body.into())));
     let err = kl.activate("NOTES-PRO0-0000-0001").unwrap_err();
     assert!(matches!(err, keylight::KeylightError::LeaseVerificationFailed));
+    // Verify-before-write invariant: a rejected lease must leave the store empty.
+    assert!(!kl.has_stored_license());
+    assert!(kl.cached_license_key().is_none());
 }
 
 #[test]
