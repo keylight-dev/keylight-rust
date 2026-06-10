@@ -24,6 +24,11 @@ pub mod telemetry;
 
 pub mod store;
 pub use store::LicenseStore;
+pub use store::encrypted_file::EncryptedFileStore;
+pub use store::device::{DeviceIdentity, SystemDeviceIdentity, FixedDeviceIdentity};
+
+pub mod client;
+pub use client::{Keylight, ActivationResult, ValidationResult};
 
 pub mod state;
 pub use state::{LicenseState, TrialStatus, KeylessState, LicenseLifecycleEvent, resolve_state};
