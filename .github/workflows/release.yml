@@ -12,8 +12,15 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
-      # Idempotent: succeed if this version is already on crates.io so the
-      # release can be re-run (e.g. to (re)build binaries) without failing here.
+      # tauri-plugin-keylight pulls in `tauri`, whose verify-build needs these.
+      - name: Install Tauri system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
+      # Idempotent publish: succeed if the version is already on crates.io so the
+      # release can be safely re-run. keylight must publish before the plugin that
+      # depends on it.
       - name: Publish keylight to crates.io
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
@@ -21,9 +28,42 @@ jobs:
           set +e
           out=$(cargo publish -p keylight 2>&1); code=$?
           echo "$out"
-          if [ $code -eq 0 ]; then exit 0; fi
-          echo "$out" | grep -qiE "already (exists|uploaded)" && { echo "already on crates.io — skipping"; exit 0; }
+          [ $code -eq 0 ] && exit 0
+          echo "$out" | grep -qiE "already (exists|uploaded)" && { echo "already on crates.io"; exit 0; }
           exit $code
+      - name: Publish tauri-plugin-keylight to crates.io
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          sleep 30 # let the keylight release propagate to the index
+          set +e
+          out=$(cargo publish -p tauri-plugin-keylight 2>&1); code=$?
+          echo "$out"
+          [ $code -eq 0 ] && exit 0
+          echo "$out" | grep -qiE "already (exists|uploaded)" && { echo "already on crates.io"; exit 0; }
+          exit $code
+  npm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: "https://registry.npmjs.org"
+      - name: Publish tauri-plugin-keylight-api to npm
+        working-directory: tauri-plugin-keylight
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          npm ci
+          # Idempotent: skip if this version is already published.
+          if npm publish --access public 2>publish.err; then
+            echo "published"
+          elif grep -qiE "cannot publish over|previously published|already exists" publish.err; then
+            cat publish.err; echo "already on npm"
+          else
+            cat publish.err; exit 1
+          fi
   binaries:
     needs: crates
     strategy:
