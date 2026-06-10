@@ -24,7 +24,7 @@ pub fn clamp_sleep_ms(ms: u64) -> u64 {
 }
 
 /// Is this HTTP status retryable?
-pub fn status_retryable(status: u16) -> bool {
+pub(crate) fn status_retryable(status: u16) -> bool {
     status == 408 || status == 429 || (500..=599).contains(&status)
 }
 

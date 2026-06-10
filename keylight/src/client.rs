@@ -188,7 +188,7 @@ impl Keylight {
                 error: Some("Invalid license key format".into()),
             });
         }
-        let machine = hostname_or("device");
+        let machine = machine_name();
         let mut map = serde_json::Map::new();
         map.insert("license_key".into(), key.into());
         map.insert("instance_name".into(), machine.into());
@@ -341,7 +341,6 @@ impl Keylight {
             account::LICENSE_EXPIRES_AT,
             account::LAST_VALIDATED_ONLINE,
             account::LAST_SEEN,
-            account::LAST_STATE,
         ] {
             self.store.delete(a)?;
         }
@@ -584,7 +583,8 @@ impl Keylight {
     }
 
     /// Compute the post-validation state and fire a lifecycle event if the resolved
-    /// state crossed a transition. Persists the new state label. Errors are swallowed.
+    /// state crossed a transition. The previous state is re-derived from the persisted
+    /// lease on each call (so transitions don't re-fire across restarts). Errors swallowed.
     fn emit_lifecycle(&self, prev_state: &LicenseState, prev_expiry: Option<i64>) {
         let next_state = self.state();
         let expiry_moved_later = match (
@@ -599,9 +599,6 @@ impl Keylight {
         };
         if let Some(ev) = crate::state::lifecycle_event(prev_state, &next_state, expiry_moved_later)
         {
-            self.store
-                .set_string(account::LAST_STATE, &format!("{:?}", next_state))
-                .ok();
             if let Some(h) = &self.on_event {
                 h(ev);
             }
@@ -623,11 +620,25 @@ fn urlencode(s: &str) -> String {
         .collect()
 }
 
-fn hostname_or(default: &str) -> String {
-    std::env::var("HOSTNAME")
-        .ok()
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| default.to_string())
+/// Best-effort human-readable machine name for the activation's `instance_name`
+/// (display only — the seat identity is the server-issued `instance_id`). Falls back
+/// through common env vars and the `hostname` command before a generic default.
+fn machine_name() -> String {
+    for var in ["HOSTNAME", "COMPUTERNAME", "HOST"] {
+        if let Ok(v) = std::env::var(var) {
+            let v = v.trim().to_string();
+            if !v.is_empty() {
+                return v;
+            }
+        }
+    }
+    if let Ok(out) = std::process::Command::new("hostname").output() {
+        let v = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        if !v.is_empty() {
+            return v;
+        }
+    }
+    "device".to_string()
 }
 
 /// Small random backoff jitter (0..250ms) to avoid synchronized retries

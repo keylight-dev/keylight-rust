@@ -4,7 +4,7 @@ jobs:
   crates:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo publish -p keylight --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
   binaries:
@@ -12,7 +12,7 @@ jobs:
     strategy: { matrix: { os: [macos-latest, ubuntu-latest, windows-latest] } }
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo build -p keylight-cli --release
       - uses: softprops/action-gh-release@v2
