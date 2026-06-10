@@ -44,6 +44,12 @@ jobs:
           exit $code
   npm:
     runs-on: ubuntu-latest
+    # OIDC "trusted publisher": no long-lived NPM_TOKEN in the repo. Requires a
+    # trusted publisher to be configured for tauri-plugin-keylight-api on npmjs.com
+    # (provider: GitHub Actions, repo: keylight-dev/keylight-rust, workflow: release.yml).
+    permissions:
+      id-token: write
+      contents: read
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v4
@@ -52,15 +58,10 @@ jobs:
           registry-url: "https://registry.npmjs.org"
       - name: Publish tauri-plugin-keylight-api to npm
         working-directory: tauri-plugin-keylight
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          if [ -z "$NODE_AUTH_TOKEN" ]; then
-            echo "NPM_TOKEN not set — skipping npm publish (re-run this job once it's configured)."
-            exit 0
-          fi
+          npm install -g npm@latest # OIDC trusted publishing needs npm >= 11.5.1
           npm ci
-          # Idempotent: skip if this version is already published.
+          # Idempotent: succeed if this version is already published.
           if npm publish --access public 2>publish.err; then
             echo "published"
           elif grep -qiE "cannot publish over|previously published|already exists" publish.err; then
