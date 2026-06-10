@@ -66,13 +66,9 @@ This workspace contains:
 |-------|-------------|--------------|
 | [`keylight`](./keylight) | Core Rust SDK for any Rust application | [![crates.io](https://img.shields.io/crates/v/keylight.svg)](https://crates.io/crates/keylight) [![docs](https://docs.rs/keylight/badge.svg)](https://docs.rs/keylight) |
 | [`keylight-cli`](./keylight-cli) | `keylight` command-line tool | Prebuilt binaries on [GitHub Releases](https://github.com/keylight-dev/keylight-rust/releases) |
-| [`tauri-plugin-keylight`](./tauri-plugin-keylight) | Tauri v2 plugin (Rust side) with capability permissions | In this workspace (installable via git) |
-| [`tauri-plugin-keylight-api`](./tauri-plugin-keylight) | Tauri v2 plugin JS/TS bindings (builds to ESM/CJS + `.d.ts`) | npm package (publishable; not yet on the public registry) |
+| [`tauri-plugin-keylight`](./tauri-plugin-keylight) | Tauri v2 plugin (Rust side) with capability permissions | [![crates.io](https://img.shields.io/crates/v/tauri-plugin-keylight.svg)](https://crates.io/crates/tauri-plugin-keylight) |
+| [`tauri-plugin-keylight-api`](./tauri-plugin-keylight) | Tauri v2 plugin JS/TS bindings (ESM/CJS + `.d.ts`) | [![npm](https://img.shields.io/npm/v/tauri-plugin-keylight-api.svg)](https://www.npmjs.com/package/tauri-plugin-keylight-api) |
 | [`keylight-notes-demo`](./demo-app) | "Keylight Notes" example app | Example (not published) |
-
-> The Tauri plugin is a complete Tauri v2 plugin — Rust commands with generated permissions plus a
-> typed npm package. The Rust crate and the npm package aren't on crates.io / npm yet, but both are
-> usable today: depend on the Rust side by git, and build/publish the JS bindings yourself.
 
 ## Quick Start
 
@@ -122,13 +118,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ### Tauri Apps
 
-The Rust-side Tauri v2 plugin is included (`tauri-plugin-keylight`). It is part of this workspace
-and not yet published to crates.io, so depend on it by git or path while it's experimental:
+Add the Rust-side Tauri v2 plugin and the JS bindings:
 
-```toml
-# src-tauri/Cargo.toml
-[dependencies]
-tauri-plugin-keylight = { git = "https://github.com/keylight-dev/keylight-rust" }
+```bash
+# Rust side
+cargo add tauri-plugin-keylight
+# JavaScript side
+npm add tauri-plugin-keylight-api
 ```
 
 Register it with a prebuilt `KeylightConfig` (your app supplies tenant/product/keys):
@@ -158,9 +154,8 @@ Grant the plugin's default permission set in your capability file:
 `keylight:default` allows `activate`, `validate`, and `has_entitlement` (per-command permissions
 `keylight:allow-activate` etc. are also generated).
 
-The typed JS/TS bindings are in [`tauri-plugin-keylight`](./tauri-plugin-keylight) and build to
-`dist-js/` (ESM, CJS, and `.d.ts`). Until they're on the public npm registry, build them locally
-(`npm install && npm run build` in that folder) or publish to your own registry — then:
+Use the typed JS/TS bindings ([`tauri-plugin-keylight-api`](https://www.npmjs.com/package/tauri-plugin-keylight-api),
+ESM/CJS + `.d.ts`) from your frontend:
 
 ```typescript
 import { activate, validate, hasEntitlement } from 'tauri-plugin-keylight-api';
