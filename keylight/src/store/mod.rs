@@ -27,6 +27,10 @@ pub trait LicenseStore: Send + Sync {
     fn get_string(&self, account: &str) -> Option<String> {
         self.get(account).and_then(|b| String::from_utf8(b).ok())
     }
+    /// Convenience: read a stored value and parse it as an `i64` (timestamps).
+    fn get_i64(&self, account: &str) -> Option<i64> {
+        self.get_string(account)?.parse().ok()
+    }
     fn set_string(&self, account: &str, value: &str) -> crate::Result<()> {
         self.set(account, value.as_bytes())
     }

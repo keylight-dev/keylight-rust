@@ -58,7 +58,7 @@ pub fn resolve_state(
             ("active", true) => return LicenseState::Licensed,
             ("fallback", _) => return LicenseState::Limited,
             ("expired", _) => return LicenseState::Expired,
-            (_, false) => {} // stale active lease falls through to offline/expired handling
+            // stale active lease (or anything else) falls through to offline/expired handling
             _ => {}
         }
     }

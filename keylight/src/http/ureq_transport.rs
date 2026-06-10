@@ -14,32 +14,25 @@ impl Default for UreqTransport {
     }
 }
 
+/// Collapse a `ureq::Response` (whether it arrived as `Ok` or a non-2xx `Status`) into
+/// our uniform `HttpResponse` so the retry layer sees the status code consistently.
+fn parse_response(resp: ureq::Response) -> TransportOutcome {
+    let status = resp.status();
+    let retry_after = resp
+        .header("Retry-After")
+        .and_then(|h| h.parse::<u64>().ok());
+    let body = resp.into_string().unwrap_or_default();
+    TransportOutcome::Response(HttpResponse {
+        status,
+        body,
+        retry_after,
+    })
+}
+
 fn handle(res: Result<ureq::Response, ureq::Error>) -> TransportOutcome {
     match res {
-        Ok(resp) => {
-            let status = resp.status();
-            let retry_after = resp
-                .header("Retry-After")
-                .and_then(|h| h.parse::<u64>().ok());
-            let body = resp.into_string().unwrap_or_default();
-            TransportOutcome::Response(HttpResponse {
-                status,
-                body,
-                retry_after,
-            })
-        }
-        Err(ureq::Error::Status(_, resp)) => {
-            let status = resp.status();
-            let retry_after = resp
-                .header("Retry-After")
-                .and_then(|h| h.parse::<u64>().ok());
-            let body = resp.into_string().unwrap_or_default();
-            TransportOutcome::Response(HttpResponse {
-                status,
-                body,
-                retry_after,
-            })
-        }
+        Ok(resp) => parse_response(resp),
+        Err(ureq::Error::Status(_, resp)) => parse_response(resp),
         Err(ureq::Error::Transport(t)) => {
             use ureq::ErrorKind::*;
             match t.kind() {

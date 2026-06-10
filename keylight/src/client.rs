@@ -108,10 +108,7 @@ impl Keylight {
 
     /// POST with retry/backoff. `decodable_4xx` lets a caller opt a 4xx body in (validate's 422).
     fn post(&self, path: &str, body: &str, decodable_4xx: &[u16]) -> Result<(u16, String)> {
-        let url = format!(
-            "{}/{}/{}/{}",
-            self.config.base_url, self.config.tenant_id, self.config.product_id, path
-        );
+        let url = self.api_url(path);
         let headers = self.headers();
         let mut attempt = 0u32;
         loop {
@@ -167,14 +164,25 @@ impl Keylight {
             .unwrap_or(0)
     }
 
-    fn verify_or_reject(&self, lease: &Lease) -> Result<()> {
-        let r = verify_lease(
+    fn api_url(&self, path: &str) -> String {
+        format!(
+            "{}/{}/{}/{}",
+            self.config.base_url, self.config.tenant_id, self.config.product_id, path
+        )
+    }
+
+    /// Verify a lease against the configured trusted keys at the current time.
+    fn verify(&self, lease: &Lease) -> crate::VerifyResult {
+        verify_lease(
             lease,
             &self.config.trusted_keys,
             Self::now(),
             crate::SKEW_SECONDS,
-        );
-        if r.kid_known && r.signature_valid {
+        )
+    }
+
+    fn verify_or_reject(&self, lease: &Lease) -> Result<()> {
+        if self.verify(lease).is_trusted() {
             Ok(())
         } else {
             Err(KeylightError::LeaseVerificationFailed)
@@ -200,7 +208,7 @@ impl Keylight {
         }
         let body = self.body_with_telemetry(map);
 
-        let (status, text) = match self.post("activate", &body, &[]) {
+        let (_, text) = match self.post("activate", &body, &[]) {
             Ok(v) => v,
             Err(KeylightError::ClientError { status, message }) => {
                 return Ok(ActivationResult {
@@ -217,7 +225,6 @@ impl Keylight {
             }
             Err(e) => return Err(e),
         };
-        let _ = status;
         let resp: ActivateResp =
             serde_json::from_str(&text).map_err(|_| KeylightError::InvalidResponse)?;
         if !resp.activated {
@@ -263,10 +270,7 @@ impl Keylight {
             .get_string(account::INSTANCE_ID)
             .ok_or(KeylightError::NoStoredLicense)?;
         let prev_state = self.state();
-        let prev_expiry = self
-            .store
-            .get_string(account::LICENSE_EXPIRES_AT)
-            .and_then(|s| s.parse::<i64>().ok());
+        let prev_expiry = self.store.get_i64(account::LICENSE_EXPIRES_AT);
         let mut map = serde_json::Map::new();
         map.insert("license_key".into(), key.into());
         map.insert("instance_id".into(), instance.into());
@@ -347,30 +351,19 @@ impl Keylight {
         ] {
             self.store.delete(a)?;
         }
-        match net_err {
-            Some(e) => Err(e),
-            None => Ok(()),
-        }
+        net_err.map_or(Ok(()), Err)
     }
 
     pub fn cached_lease(&self) -> Option<Lease> {
         if let Some(max_days) = self.config.max_offline_days {
-            let last = self
-                .store
-                .get_string(account::LAST_VALIDATED_ONLINE)
-                .and_then(|s| s.parse::<i64>().ok())?;
+            let last = self.store.get_i64(account::LAST_VALIDATED_ONLINE)?;
             if Self::now() - last > (max_days as i64) * 86400 {
                 return None;
             }
         }
         let lease: Lease = serde_json::from_str(&self.store.get_string(account::LEASE)?).ok()?;
-        let r = verify_lease(
-            &lease,
-            &self.config.trusted_keys,
-            Self::now(),
-            crate::SKEW_SECONDS,
-        );
-        if r.kid_known && r.signature_valid && !r.expired && lease.status != "expired" {
+        let r = self.verify(&lease);
+        if r.is_trusted() && !r.expired && lease.status != "expired" {
             Some(lease)
         } else {
             None
@@ -426,11 +419,7 @@ impl Keylight {
         Ok(())
     }
     pub fn check_trial(&self) -> TrialStatus {
-        let start = match self
-            .store
-            .get_string(account::TRIAL_START)
-            .and_then(|s| s.parse::<i64>().ok())
-        {
+        let start = match self.store.get_i64(account::TRIAL_START) {
             Some(v) => v,
             None => return TrialStatus::NotStarted,
         };
@@ -443,23 +432,14 @@ impl Keylight {
         }
     }
     pub fn is_clock_manipulated(&self) -> bool {
-        match self
+        let manipulated = self
             .store
-            .get_string(account::LAST_SEEN)
-            .and_then(|s| s.parse::<i64>().ok())
-        {
-            Some(last) => {
-                let m = clock_manipulated(last, Self::now());
-                if !m {
-                    let _ = self.touch_last_seen();
-                }
-                m
-            }
-            None => {
-                let _ = self.touch_last_seen();
-                false
-            }
+            .get_i64(account::LAST_SEEN)
+            .is_some_and(|last| clock_manipulated(last, Self::now()));
+        if !manipulated {
+            let _ = self.touch_last_seen();
         }
+        manipulated
     }
     pub fn free_tier_instance_id(&self) -> Result<String> {
         if let Some(id) = self.store.get_string(account::FREE_TIER_INSTANCE_ID) {
@@ -472,10 +452,7 @@ impl Keylight {
     /// Anonymous keyless beacon, debounced 24h or on state change. Errors swallowed.
     pub fn report_keyless_state(&self, state: KeylessState) {
         let last_state = self.store.get_string(account::KEYLESS_LAST_STATE);
-        let last_ping = self
-            .store
-            .get_string(account::LAST_KEYLESS_PING_AT)
-            .and_then(|s| s.parse::<i64>().ok());
+        let last_ping = self.store.get_i64(account::LAST_KEYLESS_PING_AT);
         let changed = last_state.as_deref() != Some(state.wire());
         let within = last_ping.map(|t| Self::now() - t < 86400).unwrap_or(false);
         if !changed && within {
@@ -489,10 +466,7 @@ impl Keylight {
         map.insert("instance_id".into(), instance.into());
         map.insert("state".into(), state.wire().into());
         let body = self.body_with_telemetry(map);
-        let url = format!(
-            "{}/{}/{}/keyless",
-            self.config.base_url, self.config.tenant_id, self.config.product_id
-        );
+        let url = self.api_url("keyless");
         if let TransportOutcome::Response(r) =
             self.transport.post_json(&url, &self.headers(), &body)
         {
@@ -514,20 +488,8 @@ impl Keylight {
             .and_then(|s| serde_json::from_str::<Lease>(&s).ok());
         let (status, current) = match &lease {
             Some(l) => {
-                let r = verify_lease(
-                    l,
-                    &self.config.trusted_keys,
-                    Self::now(),
-                    crate::SKEW_SECONDS,
-                );
-                (
-                    if r.kid_known && r.signature_valid {
-                        Some(l.status.clone())
-                    } else {
-                        None
-                    },
-                    !r.expired,
-                )
+                let r = self.verify(l);
+                (r.is_trusted().then(|| l.status.clone()), !r.expired)
             }
             None => (None, false),
         };
@@ -547,21 +509,16 @@ impl Keylight {
         if !self.has_stored_license() {
             return Ok(None);
         }
-        let last = self
-            .store
-            .get_string(account::LAST_VALIDATED_ONLINE)
-            .and_then(|s| s.parse::<i64>().ok());
-        if let Some(last) = last {
-            if Self::now() - last < REFRESH_DEBOUNCE {
+        if let Some(last) = self.store.get_i64(account::LAST_VALIDATED_ONLINE) {
+            let now = Self::now();
+            if now - last < REFRESH_DEBOUNCE {
                 return Ok(None);
             }
             let near_expiry = self
                 .store
-                .get_string(account::LICENSE_EXPIRES_AT)
-                .and_then(|s| s.parse::<i64>().ok())
-                .map(|exp| exp - Self::now() < 86400)
-                .unwrap_or(false);
-            if Self::now() - last < REFRESH_STALE && !near_expiry {
+                .get_i64(account::LICENSE_EXPIRES_AT)
+                .is_some_and(|exp| exp - now < 86400);
+            if now - last < REFRESH_STALE && !near_expiry {
                 return Ok(None);
             }
         }
@@ -590,16 +547,9 @@ impl Keylight {
     /// lease on each call (so transitions don't re-fire across restarts). Errors swallowed.
     fn emit_lifecycle(&self, prev_state: &LicenseState, prev_expiry: Option<i64>) {
         let next_state = self.state();
-        let expiry_moved_later = match (
-            prev_expiry,
-            self.store
-                .get_string(account::LICENSE_EXPIRES_AT)
-                .and_then(|s| s.parse::<i64>().ok()),
-        ) {
-            (Some(p), Some(n)) => n > p,
-            (None, Some(_)) => true,
-            _ => false,
-        };
+        // Option<i64> ordering: None < Some(_), so this is true exactly when a new
+        // expiry exists and is later than the previous one (or there was none).
+        let expiry_moved_later = self.store.get_i64(account::LICENSE_EXPIRES_AT) > prev_expiry;
         if let Some(ev) = crate::state::lifecycle_event(prev_state, &next_state, expiry_moved_later)
         {
             if let Some(h) = &self.on_event {
@@ -613,14 +563,19 @@ const REFRESH_DEBOUNCE: i64 = 300; // 5 min
 const REFRESH_STALE: i64 = 21600; // 6 h
 
 fn urlencode(s: &str) -> String {
-    s.bytes()
-        .map(|b| match b {
+    use std::fmt::Write;
+    let mut out = String::with_capacity(s.len());
+    for b in s.bytes() {
+        match b {
             b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
-                (b as char).to_string()
+                out.push(b as char)
             }
-            _ => format!("%{:02X}", b),
-        })
-        .collect()
+            _ => {
+                let _ = write!(out, "%{b:02X}");
+            }
+        }
+    }
+    out
 }
 
 /// Best-effort human-readable machine name for the activation's `instance_name`

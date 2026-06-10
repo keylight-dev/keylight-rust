@@ -15,10 +15,19 @@ pub struct VerifyResult {
     pub expired: bool,
 }
 
+impl VerifyResult {
+    /// The lease is signed by a known, trusted key (independent of expiry).
+    pub fn is_trusted(&self) -> bool {
+        self.kid_known && self.signature_valid
+    }
+}
+
 /// Decode standard or url-safe base64, tolerating missing padding.
 fn b64_decode(s: &str) -> Option<Vec<u8>> {
-    let norm: String = s.chars().filter(|c| !c.is_whitespace()).collect();
-    let norm = norm.replace('-', "+").replace('_', "/");
+    let norm = s
+        .replace(|c: char| c.is_whitespace(), "")
+        .replace('-', "+")
+        .replace('_', "/");
     let padded = match norm.len() % 4 {
         0 => norm,
         n => format!("{norm}{}", "=".repeat(4 - n)),

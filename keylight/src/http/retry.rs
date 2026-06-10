@@ -34,16 +34,14 @@ pub fn decide(status: u16, attempt: u32, retry_after_secs: Option<u64>) -> Retry
     if attempt >= MAX_ATTEMPTS || !status_retryable(status) {
         return RetryDecision::Stop;
     }
-    let ms = if status == 429 {
-        clamp_sleep_ms(
-            retry_after_secs
-                .map(|s| s * 1000)
-                .unwrap_or_else(|| backoff_ms(attempt)),
-        )
+    let raw_ms = if status == 429 {
+        retry_after_secs
+            .map(|s| s * 1000)
+            .unwrap_or_else(|| backoff_ms(attempt))
     } else {
-        clamp_sleep_ms(backoff_ms(attempt))
+        backoff_ms(attempt)
     };
-    RetryDecision::RetryAfter(ms)
+    RetryDecision::RetryAfter(clamp_sleep_ms(raw_ms))
 }
 
 #[cfg(test)]

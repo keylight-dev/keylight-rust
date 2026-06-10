@@ -22,8 +22,8 @@ pub struct Lease {
 impl Lease {
     /// The exact UTF-8 payload that was signed (entitlements re-sorted ascending).
     pub fn payload(&self) -> String {
-        let mut ents = self.entitlements.clone();
-        ents.sort();
+        let mut ents: Vec<&str> = self.entitlements.iter().map(String::as_str).collect();
+        ents.sort_unstable();
         format!(
             "v3|{}|{}|{}|{}|{}|{}|{}",
             self.kid,

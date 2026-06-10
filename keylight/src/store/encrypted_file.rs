@@ -11,7 +11,13 @@ use std::path::PathBuf;
 
 pub struct EncryptedFileStore {
     dir: PathBuf,
-    key: Key,
+    cipher: ChaCha20Poly1305,
+}
+
+/// Derive the per-device ChaCha20-Poly1305 cipher (BLAKE3 keyed by a fixed domain).
+fn device_cipher(device: &dyn DeviceIdentity) -> ChaCha20Poly1305 {
+    let derived = blake3::derive_key("keylight-store-v1", device.stable_id().as_bytes());
+    ChaCha20Poly1305::new(Key::from_slice(&derived))
 }
 
 impl EncryptedFileStore {
@@ -25,19 +31,16 @@ impl EncryptedFileStore {
             .ok_or_else(|| KeylightError::Storage("no config dir".into()))?;
         let dir = base.join(namespace);
         std::fs::create_dir_all(&dir).map_err(|e| KeylightError::Storage(e.to_string()))?;
-        // Derive a 32-byte key from the device id (BLAKE3 keyed by a fixed domain).
-        let derived = blake3::derive_key("keylight-store-v1", device.stable_id().as_bytes());
         Ok(Self {
             dir,
-            key: *Key::from_slice(&derived),
+            cipher: device_cipher(device),
         })
     }
     pub fn at_dir(dir: PathBuf, device: &dyn DeviceIdentity) -> Result<Self> {
         std::fs::create_dir_all(&dir).map_err(|e| KeylightError::Storage(e.to_string()))?;
-        let derived = blake3::derive_key("keylight-store-v1", device.stable_id().as_bytes());
         Ok(Self {
             dir,
-            key: *Key::from_slice(&derived),
+            cipher: device_cipher(device),
         })
     }
     fn path(&self, account: &str) -> PathBuf {
@@ -52,15 +55,14 @@ impl LicenseStore for EncryptedFileStore {
             return None;
         }
         let (nonce, ct) = blob.split_at(12);
-        let cipher = ChaCha20Poly1305::new(&self.key);
-        cipher.decrypt(Nonce::from_slice(nonce), ct).ok()
+        self.cipher.decrypt(Nonce::from_slice(nonce), ct).ok()
     }
     fn set(&self, account: &str, value: &[u8]) -> Result<()> {
         use rand::RngCore;
         let mut nonce_bytes = [0u8; 12];
         rand::thread_rng().fill_bytes(&mut nonce_bytes);
-        let cipher = ChaCha20Poly1305::new(&self.key);
-        let ct = cipher
+        let ct = self
+            .cipher
             .encrypt(Nonce::from_slice(&nonce_bytes), value)
             .map_err(|_| KeylightError::Storage("encrypt failed".into()))?;
         let mut out = nonce_bytes.to_vec();
