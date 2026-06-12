@@ -4,7 +4,7 @@
 [![Documentation](https://docs.rs/keylight/badge.svg)](https://docs.rs/keylight)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Edition](https://img.shields.io/badge/rust-2021-orange.svg)](https://www.rust-lang.org)
-[![Conformance](https://img.shields.io/badge/conformance-SP--0%20vectors-success.svg)](#conformance)
+[![Conformance](https://img.shields.io/badge/conformance-cross--SDK%20vectors-success.svg)](#conformance)
 
 Open-source Rust SDK and Tauri plugin for [Keylight](https://keylight.dev) — license your Rust
 apps, CLIs, daemons, and Tauri desktop apps with online activation and offline Ed25519 license
@@ -32,7 +32,6 @@ verification.
 - [CLI & Demo](#cli--demo)
 - [Conformance](#conformance)
 - [Documentation](#documentation)
-- [Releasing](#releasing)
 - [Other SDKs](#other-sdks)
 - [License](#license)
 
@@ -352,7 +351,7 @@ cargo run -p keylight-notes-demo -- export /tmp/notes.txt   # pro-only
 
 ## Conformance
 
-The security-critical lease verifier is gated by Keylight's frozen **SP-0 conformance vectors**
+The security-critical lease verifier is gated by Keylight's frozen **cross-SDK conformance vectors**
 (`keylight/tests/conformance.rs`). The Rust verifier must agree with every vector on
 `{ kid_known, signature_valid, expired }`, which keeps offline verification behavior identical
 across the Keylight SDK family (Swift, Rust, …).
@@ -368,35 +367,14 @@ cargo test -p keylight --test conformance
 - **Website:** [keylight.dev](https://keylight.dev)
 - **API host:** `https://api.keylight.dev`
 
-## Releasing
-
-Versions are published via tag-triggered CI (`.github/workflows/release.yml`):
-
-```bash
-# 1. Bump the workspace version in Cargo.toml, update CHANGELOG if present.
-# 2. Verify locally:
-cargo fmt --all -- --check
-cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace
-cargo publish -p keylight --dry-run
-
-# 3. Commit, then tag — the tag fires the release workflow:
-git commit -am "Release vX.Y.Z"
-git push origin main
-git tag -a vX.Y.Z -m "Release vX.Y.Z"
-git push origin vX.Y.Z
-```
-
-The workflow publishes the `keylight` crate to crates.io and attaches per-platform `keylight` CLI
-binaries (macOS, Linux, Windows) to the GitHub Release.
-
 ## Other SDKs
 
 | Platform | Status | Repository |
 |----------|--------|------------|
 | Swift (macOS/iOS) | Available | [keylight-swift](https://github.com/keylight-dev/keylight-swift) |
 | Rust (this repo) | Available | [keylight-rust](https://github.com/keylight-dev/keylight-rust) |
-| TypeScript · C# · C++ | Planned | unified by the same SP-0 conformance vectors |
+| JavaScript/TypeScript | Available | [keylight-js](https://github.com/keylight-dev/keylight-js) |
+| C# · C++ | Planned | unified by the same cross-SDK conformance vectors |
 
 ## License
 
