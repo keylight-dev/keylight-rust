@@ -15,8 +15,23 @@ verification.
 > verification** (signed `v3` lease, Ed25519 + clock-skew tolerance) for CLIs, daemons, and
 > desktop apps. Synchronous and runtime-free — no `async`/Tokio required.
 
+## Why Keylight
+
+Licensing shouldn't mean bolting a heavyweight, phone-home-or-die SDK onto your app.
+
+- **Works offline.** The license is a signed lease your app verifies locally with Ed25519 — no
+  network round-trip to gate a feature, no lockout when the machine is offline.
+- **Tamper-resistant by design.** Entitlements live *inside* the signature; a forged or hand-edited
+  lease can't pass verification without the tenant's private key.
+- **Synchronous & runtime-free.** No `async`/Tokio, no background threads — you call `activate` /
+  `refresh_if_needed` on launch and on events, and decide exactly when to check in. Ideal for CLIs
+  and daemons.
+- **One SDK family.** Verifies licenses identically to the Swift and JavaScript SDKs, proven by
+  shared conformance vectors.
+
 ## Table of Contents
 
+- [Why Keylight](#why-keylight)
 - [Features](#features)
 - [Packages](#packages)
 - [Quick Start](#quick-start)
