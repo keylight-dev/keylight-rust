@@ -63,8 +63,13 @@ jobs:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24 # OIDC trusted publishing wants a recent Node/npm
           registry-url: "https://registry.npmjs.org"
+      # NOTE: tauri-plugin-keylight-api is UNSCOPED, so it is NOT affected by
+      # npm/cli#8678 (OIDC 404 on a SCOPED package's subsequent versions — that bug
+      # blocked @keylight-dev/js@0.1.1's CI publish). If npm OIDC ever 404s here
+      # anyway, publish manually: `cd tauri-plugin-keylight && npm publish --access
+      # public` from a logged-in terminal (passkey 2FA → browser auth, no --otp).
       - name: Publish tauri-plugin-keylight-api to npm
         working-directory: tauri-plugin-keylight
         run: |
