@@ -1,7 +1,7 @@
 //! The [`Keylight`] client: activation, validation, deactivation, offline state
 //! resolution, trials, the keyless beacon, refresh timing, and lifecycle events.
 
-use crate::clock::clock_manipulated;
+use crate::clock::{clock_manipulated, clock_rolled_back};
 use crate::http::retry::{backoff_ms, clamp_sleep_ms, decide, RetryDecision, MAX_ATTEMPTS};
 use crate::http::{ureq_transport::UreqTransport, Transport, TransportOutcome};
 use crate::state::{resolve_state, KeylessState, LicenseState, TrialStatus};
@@ -96,8 +96,8 @@ impl Keylight {
             ("Content-Type".into(), "application/json".into()),
             ("X-Keylight-Request-Id".into(), Self::request_id()),
         ];
-        if let Some(k) = &self.config.sdk_key {
-            h.push(("X-Keylight-SDK-Key".into(), k.clone()));
+        if !self.config.sdk_key.is_empty() {
+            h.push(("X-Keylight-SDK-Key".into(), self.config.sdk_key.clone()));
         }
         h
     }
@@ -245,8 +245,7 @@ impl Keylight {
             self.store.set_string(account::INSTANCE_ID, id)?;
         }
         if let Some(lease) = &resp.lease {
-            self.store
-                .set_string(account::LEASE, &serde_json::to_string(lease).unwrap())?;
+            self.store_lease(lease)?;
         }
         self.save_expiry(resp.license_expires_at)?;
         self.touch_last_seen()?;
@@ -300,8 +299,7 @@ impl Keylight {
         if !resp.valid {
             // Preserve fallback/expired lease so the manager (and state()) can resolve .limited/.expired.
             if let Some(lease) = &resp.lease {
-                self.store
-                    .set_string(account::LEASE, &serde_json::to_string(lease).unwrap())?;
+                self.store_lease(lease)?;
                 self.save_expiry(resp.license_expires_at)?;
             }
             self.emit_lifecycle(&prev_state, prev_expiry);
@@ -313,8 +311,7 @@ impl Keylight {
             });
         }
         if let Some(lease) = &resp.lease {
-            self.store
-                .set_string(account::LEASE, &serde_json::to_string(lease).unwrap())?;
+            self.store_lease(lease)?;
         }
         self.save_expiry(resp.license_expires_at)?;
         self.touch_last_seen()?;
@@ -387,6 +384,13 @@ impl Keylight {
         self.store.get_i64(account::LICENSE_EXPIRES_AT)
     }
 
+    /// Persist a verified lease. Serializing a `Lease` (only owned strings, integers,
+    /// and a string vec) cannot fail, so a serialization error here would be a logic
+    /// bug rather than a recoverable condition.
+    fn store_lease(&self, lease: &Lease) -> Result<()> {
+        let json = serde_json::to_string(lease).expect("Lease serializes to JSON infallibly");
+        self.store.set_string(account::LEASE, &json)
+    }
     fn save_expiry(&self, e: Option<i64>) -> Result<()> {
         match e {
             Some(v) => self
@@ -487,6 +491,19 @@ impl Keylight {
     }
     /// Resolve the current high-level state from cached data (no network).
     pub fn state(&self) -> LicenseState {
+        // Backward clock-rollback guard: if the system clock has jumped back more
+        // than the tolerance since our last recorded contact, refuse to resolve a
+        // usable state — this is the offline vector for reviving an expired lease.
+        // Read-only (does not touch `last_seen`); the forward-jump/offline-ceiling
+        // check lives in `is_clock_manipulated()` / `max_offline_days`. Self-heals
+        // on the next successful `validate()`, which re-anchors `last_seen`.
+        if self
+            .store
+            .get_i64(account::LAST_SEEN)
+            .is_some_and(|last| clock_rolled_back(last, Self::now()))
+        {
+            return LicenseState::Invalid;
+        }
         let lease = self
             .store
             .get_string(account::LEASE)

@@ -42,11 +42,9 @@ enum Cmd {
     Info,
 }
 
-fn build(cli: &Cli) -> Keylight {
-    let mut b = KeylightConfig::builder(&cli.tenant, &cli.product).base_url(&cli.base_url);
-    if let Some(k) = &cli.sdk_key {
-        b = b.sdk_key(k);
-    }
+fn build(cli: &Cli) -> keylight::Result<Keylight> {
+    let sdk_key = cli.sdk_key.clone().unwrap_or_default();
+    let mut b = KeylightConfig::builder(&cli.tenant, &cli.product, sdk_key).base_url(&cli.base_url);
     for tk in &cli.trusted_key {
         if let Some((kid, pk)) = tk.split_once('=') {
             b = b.trusted_key(kid, pk);
@@ -62,15 +60,22 @@ fn build(cli: &Cli) -> Keylight {
             cfg.trusted_keys.extend(keys);
         }
     }
-    Keylight::new(cfg).expect("init store")
+    Keylight::new(cfg)
 }
 
 fn main() {
+    if let Err(e) = run() {
+        eprintln!("error: {e}");
+        std::process::exit(1);
+    }
+}
+
+fn run() -> keylight::Result<()> {
     let cli = Cli::parse();
-    let kl = build(&cli);
+    let kl = build(&cli)?;
     match &cli.cmd {
         Cmd::Activate { key } => {
-            let r = kl.activate(key).expect("activate");
+            let r = kl.activate(key)?;
             if cli.json {
                 println!(
                     "{}",
@@ -84,14 +89,14 @@ fn main() {
             }
         }
         Cmd::Validate => {
-            let r = kl.validate().expect("validate");
+            let r = kl.validate()?;
             println!("valid={}", r.valid);
             if !r.valid {
                 std::process::exit(1);
             }
         }
         Cmd::Deactivate => {
-            kl.deactivate().expect("deactivate");
+            kl.deactivate()?;
             println!("Deactivated.");
         }
         Cmd::Status => {
@@ -119,4 +124,5 @@ fn main() {
             );
         }
     }
+    Ok(())
 }

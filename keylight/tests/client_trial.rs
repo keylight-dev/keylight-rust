@@ -27,7 +27,7 @@ fn client(dir: &str, free_tier: bool) -> Keylight {
     let _ = std::fs::remove_dir_all(&d);
     let store =
         Arc::new(EncryptedFileStore::at_dir(d, &FixedDeviceIdentity("dev".into())).unwrap());
-    let cfg = KeylightConfig::builder("t", "p")
+    let cfg = KeylightConfig::builder("t", "p", "sdk_live_test")
         .trial_duration_days(14)
         .free_tier_enabled(free_tier)
         .build();

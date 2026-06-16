@@ -30,7 +30,7 @@ fn activate_rejects_unverifiable_lease() {
     let _ = std::fs::remove_dir_all(&dir);
     let store =
         Arc::new(EncryptedFileStore::at_dir(dir, &FixedDeviceIdentity("d".into())).unwrap());
-    let cfg = KeylightConfig::builder("keylight-notes-demo", "notes").build(); // no trusted keys
+    let cfg = KeylightConfig::builder("keylight-notes-demo", "notes", "sdk_live_test").build(); // no trusted keys
     let kl = Keylight::with_parts(cfg, store, Arc::new(MockOk(body.into())));
     let err = kl.activate("NOTES-PRO0-0000-0001").unwrap_err();
     assert!(matches!(
@@ -48,7 +48,7 @@ fn activate_invalid_format_returns_error_not_request() {
     let _ = std::fs::remove_dir_all(&dir);
     let store =
         Arc::new(EncryptedFileStore::at_dir(dir, &FixedDeviceIdentity("d".into())).unwrap());
-    let cfg = KeylightConfig::builder("t", "p")
+    let cfg = KeylightConfig::builder("t", "p", "sdk_live_test")
         .key_prefix("NOTES")
         .build();
     let kl = Keylight::with_parts(cfg, store, Arc::new(MockOk("{}".into())));

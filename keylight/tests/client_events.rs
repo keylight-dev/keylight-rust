@@ -31,7 +31,7 @@ fn validate_runs_with_event_handler_registered() {
     let _ = std::fs::remove_dir_all(&d);
     let store =
         Arc::new(EncryptedFileStore::at_dir(d, &FixedDeviceIdentity("dev".into())).unwrap());
-    let cfg = KeylightConfig::builder("t", "p").build();
+    let cfg = KeylightConfig::builder("t", "p", "sdk_live_test").build();
     let counter = Arc::new(AtomicUsize::new(0));
     let c2 = counter.clone();
     let kl =
