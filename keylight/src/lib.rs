@@ -16,7 +16,7 @@
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! // Build a config and fetch the tenant's trusted Ed25519 keyset so leases can be
 //! // verified offline (or pin keys with `.trusted_key(kid, pub_b64)`).
-//! let mut cfg = KeylightConfig::builder("your-tenant", "your-product")
+//! let mut cfg = KeylightConfig::builder("your-tenant", "your-product", "sdk_live_…")
 //!     .max_offline_days(7)
 //!     .build();
 //! if let Some((_, keys)) = keylight::keyset::fetch_keyset(

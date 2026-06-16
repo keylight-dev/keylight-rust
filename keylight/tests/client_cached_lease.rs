@@ -29,7 +29,7 @@ fn no_lease_means_no_entitlement_and_no_cached_lease() {
     let _ = std::fs::remove_dir_all(&d);
     let store =
         Arc::new(EncryptedFileStore::at_dir(d, &FixedDeviceIdentity("dev".into())).unwrap());
-    let cfg = KeylightConfig::builder("t", "p").build();
+    let cfg = KeylightConfig::builder("t", "p", "sdk_live_test").build();
     let kl = Keylight::with_parts(cfg, store, Arc::new(Noop));
     assert!(kl.cached_lease().is_none());
     assert!(!kl.has_entitlement("pro"));

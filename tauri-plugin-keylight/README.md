@@ -28,7 +28,7 @@ npm add tauri-plugin-keylight-api
 use keylight::KeylightConfig;
 
 fn main() {
-    let cfg = KeylightConfig::builder("your-tenant", "your-product").build();
+    let cfg = KeylightConfig::builder("your-tenant", "your-product", "sdk_live_…").build();
     tauri::Builder::default()
         .plugin(tauri_plugin_keylight::init(cfg))
         .run(tauri::generate_context!())

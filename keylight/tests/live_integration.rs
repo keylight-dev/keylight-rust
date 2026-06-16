@@ -5,7 +5,8 @@ use keylight::{Keylight, KeylightConfig};
 use std::sync::Arc;
 
 fn live_client(dev: &str) -> Keylight {
-    let mut cfg = KeylightConfig::builder("keylight-notes-demo", "notes")
+    let sdk_key = std::env::var("KEYLIGHT_SDK_KEY").unwrap_or_default();
+    let mut cfg = KeylightConfig::builder("keylight-notes-demo", "notes", sdk_key)
         .key_prefix("NOTES")
         .build();
     let (_, keys) = keylight::keyset::fetch_keyset(

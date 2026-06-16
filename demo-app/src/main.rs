@@ -16,7 +16,8 @@ enum Cmd {
 }
 
 fn kl() -> Keylight {
-    let mut cfg = KeylightConfig::builder("keylight-notes-demo", "notes")
+    let sdk_key = std::env::var("KEYLIGHT_SDK_KEY").unwrap_or_default();
+    let mut cfg = KeylightConfig::builder("keylight-notes-demo", "notes", sdk_key)
         .key_prefix("NOTES")
         .build();
     if let Some((_, keys)) = keylight::keyset::fetch_keyset(

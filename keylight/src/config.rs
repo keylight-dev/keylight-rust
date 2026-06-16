@@ -6,7 +6,10 @@ use std::collections::HashMap;
 pub struct KeylightConfig {
     pub tenant_id: String,
     pub product_id: String,
-    pub sdk_key: Option<String>,
+    /// Tenant-issued SDK key (`sdk_live_…`) sent as `X-Keylight-SDK-Key` on every
+    /// network call. The server requires it, so it is a required construction
+    /// argument rather than an optional setter.
+    pub sdk_key: String,
     pub trusted_keys: HashMap<String, String>, // kid -> raw ed25519 pub (base64)
     pub max_offline_days: Option<u32>,
     pub trial_duration_days: u32,
@@ -20,11 +23,12 @@ impl KeylightConfig {
     pub fn builder(
         tenant_id: impl Into<String>,
         product_id: impl Into<String>,
+        sdk_key: impl Into<String>,
     ) -> KeylightConfigBuilder {
         KeylightConfigBuilder {
             tenant_id: tenant_id.into(),
             product_id: product_id.into(),
-            sdk_key: None,
+            sdk_key: sdk_key.into(),
             trusted_keys: HashMap::new(),
             max_offline_days: None,
             trial_duration_days: 14,
@@ -52,7 +56,7 @@ impl KeylightConfig {
 pub struct KeylightConfigBuilder {
     tenant_id: String,
     product_id: String,
-    sdk_key: Option<String>,
+    sdk_key: String,
     trusted_keys: HashMap<String, String>,
     max_offline_days: Option<u32>,
     trial_duration_days: u32,
@@ -63,10 +67,6 @@ pub struct KeylightConfigBuilder {
 }
 
 impl KeylightConfigBuilder {
-    pub fn sdk_key(mut self, v: impl Into<String>) -> Self {
-        self.sdk_key = Some(v.into());
-        self
-    }
     pub fn trusted_key(mut self, kid: impl Into<String>, pub_b64: impl Into<String>) -> Self {
         self.trusted_keys.insert(kid.into(), pub_b64.into());
         self
@@ -116,14 +116,15 @@ mod tests {
     use super::*;
     #[test]
     fn builder_defaults() {
-        let c = KeylightConfig::builder("t", "p").build();
+        let c = KeylightConfig::builder("t", "p", "sdk_live_test").build();
         assert_eq!(c.base_url, "https://api.keylight.dev");
         assert_eq!(c.trial_duration_days, 14);
         assert!(!c.free_tier_enabled);
+        assert_eq!(c.sdk_key, "sdk_live_test");
     }
     #[test]
     fn key_format_respects_prefix() {
-        let c = KeylightConfig::builder("t", "p")
+        let c = KeylightConfig::builder("t", "p", "sdk_live_test")
             .key_prefix("NOTES")
             .build();
         assert!(c.validate_key_format("NOTES-PRO0-0000-0001"));

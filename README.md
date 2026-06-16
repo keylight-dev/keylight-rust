@@ -98,7 +98,7 @@ use keylight::{Keylight, KeylightConfig};
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Build a config. Fetch the tenant's trusted Ed25519 keyset so leases can be
     // verified offline. (You can also pin keys explicitly with `.trusted_key(kid, pub_b64)`.)
-    let mut cfg = KeylightConfig::builder("your-tenant", "your-product")
+    let mut cfg = KeylightConfig::builder("your-tenant", "your-product", "sdk_live_…")
         .key_prefix("PROD")        // optional client-side key-format check
         .max_offline_days(7)       // optional offline grace window
         .build();
@@ -148,7 +148,7 @@ Register it with a prebuilt `KeylightConfig` (your app supplies tenant/product/k
 use keylight::KeylightConfig;
 
 fn main() {
-    let cfg = KeylightConfig::builder("your-tenant", "your-product").build();
+    let cfg = KeylightConfig::builder("your-tenant", "your-product", "sdk_live_…").build();
     tauri::Builder::default()
         .plugin(tauri_plugin_keylight::init(cfg))
         .run(tauri::generate_context!())
@@ -238,7 +238,7 @@ against the tenant's trusted keyset, applying a **300-second clock-skew** tolera
 ```rust
 use keylight::KeylightConfig;
 
-let cfg = KeylightConfig::builder("your-tenant", "your-product")
+let cfg = KeylightConfig::builder("your-tenant", "your-product", "sdk_live_…")
     // Pin trusted keys explicitly instead of fetching them:
     .trusted_key("k1", "<raw ed25519 public key, base64>")
     .max_offline_days(7) // None = run offline as long as the lease itself is current
@@ -274,6 +274,9 @@ match kl.check_trial() {                 // NotStarted | Active { days_left } | 
 kl.report_keyless_state(keylight::KeylessState::Trial);
 
 // Tamper check and a pre-filled hosted upgrade link:
+// `state()` already forces `Invalid` if the clock was rolled back past tolerance
+// (the offline vector for reviving an expired lease). `is_clock_manipulated()`
+// additionally surfaces large forward jumps if you want to react to them too.
 let tampered = kl.is_clock_manipulated();
 if let Some(url) = kl.upgrade_url() { println!("Upgrade: {url}"); }
 ```
@@ -306,13 +309,13 @@ so a transition won't re-fire across restarts.
 
 ## Configuration Reference
 
-Built with `KeylightConfig::builder(tenant_id, product_id)`:
+Built with `KeylightConfig::builder(tenant_id, product_id, sdk_key)`:
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `tenant_id` | `String` | — | Your Keylight tenant (required). |
 | `product_id` | `String` | — | Your product (required). |
-| `sdk_key` | `Option<String>` | `None` | Optional SDK key, sent as `X-Keylight-SDK-Key`. |
+| `sdk_key` | `String` | — | Tenant SDK key (required), sent as `X-Keylight-SDK-Key` on every call. |
 | `trusted_keys` | `map<kid, pub>` | empty | Trusted Ed25519 public keys for offline verification (`.trusted_key()` or `fetch_keyset`). |
 | `max_offline_days` | `Option<u32>` | `None` | Offline grace window since last online validation. `None` = until the lease itself expires. |
 | `trial_duration_days` | `u32` | `14` | Local trial length. |
@@ -336,7 +339,7 @@ your tenant/product, and expose your own branded subcommand. The end user then j
 ```rust
 // In your CLI `mole`: `mole activate <KEY>`
 Cmd::Activate { key } => {
-    let kl = Keylight::new(KeylightConfig::builder("mole-co", "mole").build())?;
+    let kl = Keylight::new(KeylightConfig::builder("mole-co", "mole", "sdk_live_…").build())?;
     let unlocked = kl.activate(&key)?.activated;
     println!("{}", if unlocked { "Mole Pro unlocked 🎉" } else { "Invalid key" });
 }

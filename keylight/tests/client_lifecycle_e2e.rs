@@ -89,7 +89,7 @@ fn validate_fires_cancelled_on_licensed_to_limited() {
     store.set_string(account::LICENSE_KEY, "PRO-KEY").unwrap();
     store.set_string(account::INSTANCE_ID, "i1").unwrap();
 
-    let cfg = KeylightConfig::builder("t", "p")
+    let cfg = KeylightConfig::builder("t", "p", "sdk_live_test")
         .trusted_key(KID, pub_b64)
         .build();
     let transport = Arc::new(Scripted {
