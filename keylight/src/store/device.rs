@@ -89,7 +89,7 @@ pub fn uuid_v4_pub() -> String {
 /// Tiny UUIDv4 from `rand` (avoids a uuid dependency).
 fn uuid_v4() -> String {
     use rand::Rng;
-    let b: [u8; 16] = rand::thread_rng().gen();
+    let b: [u8; 16] = rand::thread_rng().r#gen();
     let mut b = b;
     b[6] = (b[6] & 0x0f) | 0x40;
     b[8] = (b[8] & 0x3f) | 0x80;

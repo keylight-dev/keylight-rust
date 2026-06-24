@@ -88,7 +88,7 @@ impl Keylight {
 
     fn request_id() -> String {
         use rand::Rng;
-        let n: u32 = rand::thread_rng().gen();
+        let n: u32 = rand::thread_rng().r#gen();
         format!("{n:08x}")
     }
     fn headers(&self) -> Vec<(String, String)> {

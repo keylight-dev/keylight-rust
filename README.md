@@ -3,7 +3,8 @@
 [![Crates.io](https://img.shields.io/crates/v/keylight.svg)](https://crates.io/crates/keylight)
 [![Documentation](https://docs.rs/keylight/badge.svg)](https://docs.rs/keylight)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Edition](https://img.shields.io/badge/rust-2021-orange.svg)](https://www.rust-lang.org)
+[![Edition](https://img.shields.io/badge/rust-2024-orange.svg)](https://www.rust-lang.org)
+[![MSRV](https://img.shields.io/badge/MSRV-1.85-blue.svg)](https://www.rust-lang.org)
 [![Conformance](https://img.shields.io/badge/conformance-cross--SDK%20vectors-success.svg)](#conformance)
 
 Open-source Rust SDK and Tauri plugin for [Keylight](https://keylight.dev) — license your Rust
