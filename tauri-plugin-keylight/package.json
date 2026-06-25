@@ -1,6 +1,6 @@
 {
   "name": "tauri-plugin-keylight-api",
-  "version": "0.1.3",
+  "version": "0.3.0",
   "description": "JavaScript/TypeScript bindings for the Keylight Tauri v2 plugin — license activation, validation, and entitlement checks.",
   "license": "MIT",
   "type": "module",
