@@ -8,7 +8,7 @@ use ed25519_dalek::{Signer, SigningKey};
 use keylight::http::{HttpResponse, Transport, TransportOutcome};
 use keylight::store::device::FixedDeviceIdentity;
 use keylight::store::encrypted_file::EncryptedFileStore;
-use keylight::store::{account, LicenseStore};
+use keylight::store::{LicenseStore, account};
 use keylight::{Keylight, KeylightConfig, LicenseLifecycleEvent};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};

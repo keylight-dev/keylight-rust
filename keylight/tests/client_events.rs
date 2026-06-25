@@ -3,8 +3,8 @@ use keylight::store::device::FixedDeviceIdentity;
 use keylight::store::encrypted_file::EncryptedFileStore;
 use keylight::{Keylight, KeylightConfig};
 use std::sync::{
-    atomic::{AtomicUsize, Ordering},
     Arc,
+    atomic::{AtomicUsize, Ordering},
 };
 
 struct ValidInvalid; // returns valid:false with no lease → state resolves without crypto

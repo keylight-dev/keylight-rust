@@ -1,8 +1,8 @@
 use keylight::{Keylight, KeylightConfig};
 use std::sync::Arc;
 use tauri::{
-    plugin::{Builder, TauriPlugin},
     Manager, Runtime, State,
+    plugin::{Builder, TauriPlugin},
 };
 
 struct KeylightState(Arc<Keylight>);

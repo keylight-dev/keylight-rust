@@ -77,21 +77,21 @@ pub mod lease;
 pub use lease::Lease;
 
 pub mod verifier;
-pub use verifier::{verify_lease, VerifyResult, SKEW_SECONDS};
+pub use verifier::{SKEW_SECONDS, VerifyResult, verify_lease};
 
 pub mod telemetry;
 
 pub mod store;
+pub use store::LicenseStore;
 pub use store::device::{DeviceIdentity, FixedDeviceIdentity, SystemDeviceIdentity};
 pub use store::encrypted_file::EncryptedFileStore;
-pub use store::LicenseStore;
 
 pub mod client;
 pub use client::{ActivationResult, Keylight, ValidationResult};
 
 pub mod state;
 pub use state::{
-    lifecycle_event, resolve_state, KeylessState, LicenseLifecycleEvent, LicenseState, TrialStatus,
+    KeylessState, LicenseLifecycleEvent, LicenseState, TrialStatus, lifecycle_event, resolve_state,
 };
 
 pub mod clock;

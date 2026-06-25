@@ -3,6 +3,7 @@ name = "keylight-cli"
 description = "Keylight licensing CLI"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 
@@ -11,7 +12,7 @@ name = "keylight"
 path = "src/main.rs"
 
 [dependencies]
-keylight = { path = "../keylight", version = "0.2.0" }
+keylight = { path = "../keylight", version = "0.3.0" }
 clap = { version = "4", features = ["derive", "env"] }
 serde_json = "1"
 
