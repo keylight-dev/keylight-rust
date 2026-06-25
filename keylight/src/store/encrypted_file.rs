@@ -1,11 +1,11 @@
 use super::{
-    device::{DeviceIdentity, SystemDeviceIdentity},
     LicenseStore,
+    device::{DeviceIdentity, SystemDeviceIdentity},
 };
 use crate::{KeylightError, Result};
 use chacha20poly1305::{
-    aead::{Aead, KeyInit},
     ChaCha20Poly1305, Key, Nonce,
+    aead::{Aead, KeyInit},
 };
 use std::path::PathBuf;
 

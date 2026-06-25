@@ -1,4 +1,4 @@
-use keylight::{verify_lease, Lease};
+use keylight::{Lease, verify_lease};
 use serde::Deserialize;
 use std::collections::HashMap;
 

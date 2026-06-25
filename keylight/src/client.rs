@@ -2,11 +2,11 @@
 //! resolution, trials, the keyless beacon, refresh timing, and lifecycle events.
 
 use crate::clock::{clock_manipulated, clock_rolled_back};
-use crate::http::retry::{backoff_ms, clamp_sleep_ms, decide, RetryDecision, MAX_ATTEMPTS};
-use crate::http::{ureq_transport::UreqTransport, Transport, TransportOutcome};
-use crate::state::{resolve_state, KeylessState, LicenseState, TrialStatus};
-use crate::store::{account, encrypted_file::EncryptedFileStore, LicenseStore};
-use crate::{telemetry, verify_lease, KeylightConfig, KeylightError, Lease, Result};
+use crate::http::retry::{MAX_ATTEMPTS, RetryDecision, backoff_ms, clamp_sleep_ms, decide};
+use crate::http::{Transport, TransportOutcome, ureq_transport::UreqTransport};
+use crate::state::{KeylessState, LicenseState, TrialStatus, resolve_state};
+use crate::store::{LicenseStore, account, encrypted_file::EncryptedFileStore};
+use crate::{KeylightConfig, KeylightError, Lease, Result, telemetry, verify_lease};
 use serde::Deserialize;
 use std::sync::Arc;
 
@@ -150,7 +150,7 @@ impl Keylight {
                     continue;
                 }
                 TransportOutcome::Transient(e) | TransportOutcome::Terminal(e) => {
-                    return Err(KeylightError::NetworkFailure(e))
+                    return Err(KeylightError::NetworkFailure(e));
                 }
                 TransportOutcome::Timeout => return Err(KeylightError::Timeout),
             }
@@ -287,7 +287,7 @@ impl Keylight {
                     } else {
                         message
                     }),
-                })
+                });
             }
             Err(e) => return Err(e),
         };

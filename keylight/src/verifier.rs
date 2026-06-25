@@ -52,7 +52,7 @@ pub fn verify_lease(
                 kid_known: false,
                 signature_valid: false,
                 expired,
-            }
+            };
         }
     };
     let signature_valid = (|| -> Option<bool> {
