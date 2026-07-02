@@ -250,6 +250,13 @@ let cfg = KeylightConfig::builder("your-tenant", "your-product", "sdk_live_…")
   (`keylight::keyset::fetch_keyset`) or pinned at build time.
 - `cached_lease()` returns the lease only when it is `kid`-known, signature-valid, unexpired, and
   (if set) within `max_offline_days` of the last online validation.
+- **Key rotation:** every lease carries a `kid`, and a lease whose `kid` is absent from the keyset is
+  rejected (`VerifyResult { kid_known: false }`). `.trusted_key()` is chainable (and
+  `trusted_keys.extend(...)` bulk-adds), so when the tenant rotates its signing key you bump the `kid`
+  (`k1` → `k2`) and register **both** the outgoing and incoming keys for a deprecation window —
+  leases signed by either still verify, so unexpired leases don't flip to invalid mid-session.
+  If you `fetch_keyset` instead of pinning, the well-known endpoint already returns every active
+  `kid`, so rotation is transparent. (See your Keylight tenant's `security.md` → *Ed25519 key rotation*.)
 - Encrypted lease/key material is stored device-bound with **ChaCha20-Poly1305** (key derived from a
   per-device identity via BLAKE3) — copying the files to another machine won't decrypt them.
 
