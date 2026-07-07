@@ -83,6 +83,20 @@ impl KeylightConfigBuilder {
         self.free_tier_enabled = v;
         self
     }
+    /// Report your application's version alongside every request, including the
+    /// anonymous keyless/free-tier beacon.
+    ///
+    /// **You must call this to get an app version in the dashboard.** Unlike
+    /// `sdk_version` and `platform` — which the SDK attaches automatically — the
+    /// app version is unknown to the SDK and is omitted entirely unless you set
+    /// it here. A typical value is your crate version:
+    ///
+    /// ```rust
+    /// # use keylight::KeylightConfig;
+    /// let cfg = KeylightConfig::builder("tenant", "product", "sdk_live_…")
+    ///     .app_version(env!("CARGO_PKG_VERSION"))
+    ///     .build();
+    /// ```
     pub fn app_version(mut self, v: impl Into<String>) -> Self {
         self.app_version = Some(v.into());
         self

@@ -66,7 +66,9 @@ Licensing shouldn't mean bolting a heavyweight, phone-home-or-die SDK onto your 
 - **Lifecycle Events** — Optional callback fires `Renewed` / `Cancelled` / `Expired` / `Restored`
   as the resolved state changes.
 - **Clock-Manipulation Detection** — Flags backward/forward system-clock tampering.
-- **Device Telemetry** — Auto-attaches `sdk_version`, `platform`, and (optional) `app_version`.
+- **Device Telemetry** — Auto-attaches `sdk_version` and `platform`. To also report your app
+  version, you **must** set it with `.app_version(env!("CARGO_PKG_VERSION"))` on the builder — the
+  SDK can't infer it, so it's omitted (and the dashboard shows a blank version) until you do.
 - **Network Resilience** — Automatic retry with exponential backoff + jitter; honors `Retry-After`.
 - **Secure by Default** — TLS via **rustls** (no OpenSSL), **ChaCha20-Poly1305** device-bound
   encrypted on-disk storage, and **no `unsafe`** in the SDK crate.
@@ -100,8 +102,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Build a config. Fetch the tenant's trusted Ed25519 keyset so leases can be
     // verified offline. (You can also pin keys explicitly with `.trusted_key(kid, pub_b64)`.)
     let mut cfg = KeylightConfig::builder("your-tenant", "your-product", "sdk_live_…")
-        .key_prefix("PROD")        // optional client-side key-format check
-        .max_offline_days(7)       // optional offline grace window
+        .key_prefix("PROD")                       // optional client-side key-format check
+        .max_offline_days(7)                      // optional offline grace window
+        .app_version(env!("CARGO_PKG_VERSION"))   // report app version (omitted if unset)
         .build();
     if let Some((_, keys)) = keylight::keyset::fetch_keyset(
         &keylight::http::ureq_transport::UreqTransport::default(),
@@ -278,7 +281,10 @@ match kl.check_trial() {                 // NotStarted | Active { days_left } | 
     _ => {}
 }
 
-// Anonymous, debounced usage beacon for trial / free-tier / expired devices:
+// Anonymous, debounced usage beacon for trial / free-tier / expired devices.
+// It carries `sdk_version` and `platform` automatically; to also see your app
+// version on these devices in the dashboard, set `.app_version(…)` on the
+// builder (see the client setup above) — it is omitted otherwise.
 kl.report_keyless_state(keylight::KeylessState::Trial);
 
 // Tamper check and a pre-filled hosted upgrade link:
