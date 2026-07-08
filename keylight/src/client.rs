@@ -494,15 +494,29 @@ impl Keylight {
         // Backward clock-rollback guard: if the system clock has jumped back more
         // than the tolerance since our last recorded contact, refuse to resolve a
         // usable state — this is the offline vector for reviving an expired lease.
-        // Read-only (does not touch `last_seen`); the forward-jump/offline-ceiling
-        // check lives in `is_clock_manipulated()` / `max_offline_days`. Self-heals
-        // on the next successful `validate()`, which re-anchors `last_seen`.
+        // Read-only (does not touch `last_seen`); the forward-jump component lives
+        // in `is_clock_manipulated()`. Self-heals on the next successful
+        // `validate()`, which re-anchors `last_seen`.
         if self
             .store
             .get_i64(account::LAST_SEEN)
             .is_some_and(|last| clock_rolled_back(last, Self::now()))
         {
             return LicenseState::Invalid;
+        }
+        // Offline bound: a validated license must not run forever without a
+        // successful server re-check. If `max_offline_days` is configured and we
+        // have a recorded last online validation older than the cap, deny — even
+        // if the cached lease is still signature-valid and unexpired. A missing
+        // `last_validated_online` (no license ever validated online) is not
+        // gated here; that resolves through the normal `had_stored_license` path
+        // below.
+        if let Some(max_days) = self.config.max_offline_days {
+            if let Some(last) = self.store.get_i64(account::LAST_VALIDATED_ONLINE) {
+                if Self::now() - last > (max_days as i64) * 86400 {
+                    return LicenseState::Expired;
+                }
+            }
         }
         let lease = self
             .store
@@ -546,10 +560,16 @@ impl Keylight {
         }
         Ok(Some(self.validate()?))
     }
-    /// Called on app launch: validate if a license is stored, else no-op.
+    /// Called on app launch: if a license is stored, **always** validate against
+    /// the server (no staleness gate — unlike [`Self::refresh_if_needed`]), so a
+    /// dashboard revoke or genuine expiry takes effect on the very next launch
+    /// rather than lagging behind the in-session refresh cadence. `validate()`
+    /// does not mutate state on a transient/network error, so a launch with no
+    /// connectivity keeps running on the existing cached lease (last-known-good),
+    /// subject to the offline bound enforced by [`Self::state`].
     pub fn check_on_launch(&self) -> Result<()> {
         if self.has_stored_license() {
-            let _ = self.refresh_if_needed()?;
+            let _ = self.validate()?;
         }
         Ok(())
     }

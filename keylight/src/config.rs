@@ -11,6 +11,12 @@ pub struct KeylightConfig {
     /// argument rather than an optional setter.
     pub sdk_key: String,
     pub trusted_keys: HashMap<String, String>, // kid -> raw ed25519 pub (base64)
+    /// Hard cap, in days, on how long a validated license may run without a
+    /// successful server re-validation before `state()` denies it — enforced
+    /// even against an otherwise signature-valid, unexpired cached lease.
+    /// Defaults to `Some(15)`; set to `None` (via this field directly, or a
+    /// literal `KeylightConfig { .. }`) to disable the cap entirely, e.g. for
+    /// air-gapped consumers.
     pub max_offline_days: Option<u32>,
     pub trial_duration_days: u32,
     pub free_tier_enabled: bool,
@@ -30,7 +36,7 @@ impl KeylightConfig {
             product_id: product_id.into(),
             sdk_key: sdk_key.into(),
             trusted_keys: HashMap::new(),
-            max_offline_days: None,
+            max_offline_days: Some(15),
             trial_duration_days: 14,
             free_tier_enabled: false,
             app_version: None,
@@ -135,6 +141,14 @@ mod tests {
         assert_eq!(c.trial_duration_days, 14);
         assert!(!c.free_tier_enabled);
         assert_eq!(c.sdk_key, "sdk_live_test");
+    }
+    /// Cross-SDK parity: the offline bound must default to 15 days so a
+    /// validated license doesn't run offline forever (`None` still opts out,
+    /// e.g. for air-gapped consumers, by setting the field directly).
+    #[test]
+    fn builder_defaults_max_offline_days_to_15() {
+        let c = KeylightConfig::builder("t", "p", "sdk_live_test").build();
+        assert_eq!(c.max_offline_days, Some(15));
     }
     #[test]
     fn key_format_respects_prefix() {
