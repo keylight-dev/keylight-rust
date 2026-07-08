@@ -81,6 +81,8 @@ pub use verifier::{SKEW_SECONDS, VerifyResult, verify_lease};
 
 pub mod telemetry;
 
+mod machine;
+
 pub mod store;
 pub use store::LicenseStore;
 pub use store::device::{DeviceIdentity, FixedDeviceIdentity, SystemDeviceIdentity};

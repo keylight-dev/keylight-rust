@@ -5,6 +5,7 @@ use crate::clock::{clock_manipulated, clock_rolled_back};
 use crate::http::retry::{MAX_ATTEMPTS, RetryDecision, backoff_ms, clamp_sleep_ms, decide};
 use crate::http::{Transport, TransportOutcome, ureq_transport::UreqTransport};
 use crate::state::{KeylessState, LicenseState, TrialStatus, resolve_state};
+use crate::store::device::{DeviceIdentity, SystemDeviceIdentity};
 use crate::store::{LicenseStore, account, encrypted_file::EncryptedFileStore};
 use crate::{KeylightConfig, KeylightError, Lease, Result, telemetry, verify_lease};
 use serde::Deserialize;
@@ -55,6 +56,7 @@ pub struct Keylight {
     config: KeylightConfig,
     store: Arc<dyn LicenseStore>,
     transport: Arc<dyn Transport>,
+    device: Arc<dyn DeviceIdentity>,
     on_event: Option<Box<dyn Fn(crate::state::LicenseLifecycleEvent) + Send + Sync>>,
 }
 
@@ -65,6 +67,7 @@ impl Keylight {
         Ok(Self {
             store: Arc::new(EncryptedFileStore::new(&ns)?),
             transport: Arc::new(UreqTransport::default()),
+            device: Arc::new(SystemDeviceIdentity),
             config,
             on_event: None,
         })
@@ -79,6 +82,7 @@ impl Keylight {
             config,
             store,
             transport,
+            device: Arc::new(SystemDeviceIdentity),
             on_event: None,
         }
     }
@@ -88,6 +92,12 @@ impl Keylight {
         handler: impl Fn(crate::state::LicenseLifecycleEvent) + Send + Sync + 'static,
     ) -> Self {
         self.on_event = Some(Box::new(handler));
+        self
+    }
+    /// Override the device identity used for `machine_hash` on the keyless heartbeat
+    /// (tests, alternate platforms). Defaults to [`SystemDeviceIdentity`].
+    pub fn with_device(mut self, device: Arc<dyn DeviceIdentity>) -> Self {
+        self.device = device;
         self
     }
 
@@ -485,6 +495,13 @@ impl Keylight {
         let mut map = serde_json::Map::new();
         map.insert("instance_id".into(), instance.into());
         map.insert("state".into(), state.wire().into());
+        if let Some(hw) = self.device.hardware_id() {
+            map.insert(
+                "machine_hash".into(),
+                crate::machine::machine_hash(&self.config.tenant_id, &self.config.product_id, &hw)
+                    .into(),
+            );
+        }
         let body = self.body_with_telemetry(map);
         let url = self.api_url("keyless");
         if let TransportOutcome::Response(r) =

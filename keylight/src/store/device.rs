@@ -1,12 +1,22 @@
 /// Stable per-device identifier (parity with Swift SystemDeviceIdentity).
 pub trait DeviceIdentity: Send + Sync {
     fn stable_id(&self) -> String;
+    /// True OS/hardware machine ID if available (NO random fallback). `None` when the
+    /// platform has no stable hardware identifier. Used only for `machine_hash` on the
+    /// keyless heartbeat — never substitute the random `persisted_fallback_id` here, as
+    /// that would defeat cross-install dedup on the server.
+    fn hardware_id(&self) -> Option<String> {
+        None
+    }
 }
 
 pub struct SystemDeviceIdentity;
 impl DeviceIdentity for SystemDeviceIdentity {
     fn stable_id(&self) -> String {
         read_machine_id().unwrap_or_else(persisted_fallback_id)
+    }
+    fn hardware_id(&self) -> Option<String> {
+        read_machine_id()
     }
 }
 
@@ -15,6 +25,13 @@ pub struct FixedDeviceIdentity(pub String);
 impl DeviceIdentity for FixedDeviceIdentity {
     fn stable_id(&self) -> String {
         self.0.clone()
+    }
+    fn hardware_id(&self) -> Option<String> {
+        if self.0.is_empty() {
+            None
+        } else {
+            Some(self.0.clone())
+        }
     }
 }
 
@@ -120,6 +137,17 @@ mod tests {
     #[test]
     fn fixed_identity_returns_value() {
         assert_eq!(FixedDeviceIdentity("abc".into()).stable_id(), "abc");
+    }
+    #[test]
+    fn fixed_identity_hardware_id_present_when_nonempty() {
+        assert_eq!(
+            FixedDeviceIdentity("abc".into()).hardware_id(),
+            Some("abc".into())
+        );
+    }
+    #[test]
+    fn fixed_identity_hardware_id_none_when_empty() {
+        assert_eq!(FixedDeviceIdentity("".into()).hardware_id(), None);
     }
     #[test]
     fn system_identity_is_nonempty_and_stable() {
