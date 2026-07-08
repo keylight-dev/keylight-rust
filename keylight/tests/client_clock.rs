@@ -73,6 +73,13 @@ fn licensed_client(dir: &str, last_seen: i64) -> (Keylight, Arc<EncryptedFileSto
     store
         .set_string(account::LAST_SEEN, &last_seen.to_string())
         .unwrap();
+    // A genuinely licensed store (post activate/validate) always carries a current
+    // online-validation anchor; seed it so these clock-rollback tests exercise the
+    // rollback guard rather than tripping the offline cap (default 15 days), which
+    // is fail-closed on a missing anchor.
+    store
+        .set_string(account::LAST_VALIDATED_ONLINE, &now().to_string())
+        .unwrap();
 
     let cfg = KeylightConfig::builder("t", "p", "sdk_live_test")
         .trusted_key(KID, pub_b64)

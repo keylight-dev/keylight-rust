@@ -516,29 +516,35 @@ impl Keylight {
             return LicenseState::Invalid;
         }
         // Offline bound: a validated license must not run forever without a
-        // successful server re-check. If `max_offline_days` is configured and we
-        // have a recorded last online validation older than the cap, deny — even
-        // if the cached lease is still signature-valid and unexpired. A missing
-        // `last_validated_online` (no license ever validated online) is not
-        // gated here; that resolves through the normal `had_stored_license` path
-        // below.
-        if let Some(max_days) = self.config.max_offline_days {
-            if let Some(last) = self.store.get_i64(account::LAST_VALIDATED_ONLINE) {
-                if Self::now() - last > (max_days as i64) * 86400 {
-                    return LicenseState::Expired;
-                }
-            }
-        }
+        // successful server re-check. When `max_offline_days` is configured the
+        // cached lease is only usable if we have a `last_validated_online` anchor
+        // within the cap. Both a *stale* anchor (older than the cap) and a
+        // *missing* anchor are fail-closed — the latter matters because an
+        // attacker who deletes the anchor to reset the offline clock must not
+        // thereby revive the lease. This mirrors `cached_lease()` (whose `?` on
+        // `get_i64` already short-circuits a missing anchor) and Swift's
+        // `isWithinOfflineGrace`. When `max_offline_days` is `None` the cap is
+        // disabled entirely (unlimited offline). Dropping the lease here lets a
+        // stored license fall through to `Expired` via the `had_stored_license`
+        // path in `resolve_state`, while trials / free-tier (no lease, no license)
+        // are unaffected.
+        let offline_bound_ok = match self.config.max_offline_days {
+            Some(max_days) => self
+                .store
+                .get_i64(account::LAST_VALIDATED_ONLINE)
+                .is_some_and(|last| Self::now() - last <= (max_days as i64) * 86400),
+            None => true,
+        };
         let lease = self
             .store
             .get_string(account::LEASE)
             .and_then(|s| serde_json::from_str::<Lease>(&s).ok());
         let (status, current) = match &lease {
-            Some(l) => {
+            Some(l) if offline_bound_ok => {
                 let r = self.verify(l);
                 (r.is_trusted().then(|| l.status.clone()), !r.expired)
             }
-            None => (None, false),
+            _ => (None, false),
         };
         resolve_state(
             status.as_deref(),

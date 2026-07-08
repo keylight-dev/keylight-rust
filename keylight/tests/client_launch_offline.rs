@@ -286,6 +286,66 @@ fn real_422_with_expired_lease_keeps_lease_and_resolves_expired() {
     );
 }
 
+/// (g) Missing anchor with the cap enabled denies (fail-closed): a signature-valid,
+/// unexpired cached lease but NO `last_validated_online` timestamp (e.g. an attacker
+/// deletes it to reset the offline clock, or a store never validated online) must NOT
+/// resolve to a licensed/entitled state when `max_offline_days` is configured. This
+/// mirrors Swift's `isWithinOfflineGrace` (missing anchor + cap configured => denied)
+/// and `cached_lease()`'s `?`-on-`get_i64` short-circuit. Regression guard: `state()`
+/// used to fall through to Licensed here (fail-open) because its inner
+/// `if let Some(last)` simply skipped a missing anchor.
+#[test]
+fn missing_anchor_with_cap_denies_fail_closed() {
+    let signing = signing_key();
+    let store = store_with_active_lease("kl-launch-missing-anchor", &signing, now());
+    // Remove the online-validation anchor: this is the fail-closed vector.
+    store.delete(account::LAST_VALIDATED_ONLINE).unwrap();
+    let cfg = config_trusting(&signing, Some(15));
+    let kl = Keylight::with_parts(cfg, store, Arc::new(AlwaysDown));
+
+    // cached_lease() was already fail-closed (the `?` on get_i64); keep it as a guard.
+    assert!(
+        kl.cached_lease().is_none(),
+        "cached_lease() must deny when the online anchor is missing and the cap is set"
+    );
+    // state() is the path that used to be fail-open.
+    let s = kl.state();
+    assert_ne!(
+        s,
+        LicenseState::Licensed,
+        "a missing online anchor with the cap set must not resolve as Licensed"
+    );
+    assert_ne!(
+        s,
+        LicenseState::Limited,
+        "nor as any other entitled/grace state"
+    );
+}
+
+/// (h) Missing anchor with the cap disabled still allows (unlimited offline): with
+/// `max_offline_days = None`, the offline cap does not apply, so a signature-valid,
+/// unexpired cached lease resolves as Licensed even though no `last_validated_online`
+/// anchor is present. Proves the fail-closed fix for (g) does not over-reach into the
+/// None=unlimited contract.
+#[test]
+fn missing_anchor_without_cap_still_allows() {
+    let signing = signing_key();
+    let store = store_with_active_lease("kl-launch-missing-anchor-nocap", &signing, now());
+    store.delete(account::LAST_VALIDATED_ONLINE).unwrap();
+    let cfg = config_trusting(&signing, None);
+    let kl = Keylight::with_parts(cfg, store, Arc::new(AlwaysDown));
+
+    assert!(
+        kl.cached_lease().is_some(),
+        "cached_lease() must allow with the cap disabled, anchor or not"
+    );
+    assert_eq!(
+        kl.state(),
+        LicenseState::Licensed,
+        "max_offline_days = None means unlimited offline, missing anchor notwithstanding"
+    );
+}
+
 /// (d) Cap disabled: `max_offline_days = None` must never deny for age, however
 /// long it has been since the last successful online validation.
 #[test]
