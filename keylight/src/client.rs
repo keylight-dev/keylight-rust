@@ -36,6 +36,11 @@ struct ActivateResp {
 }
 #[derive(Deserialize)]
 struct ValidateResp {
+    /// Defaults to `false` when absent: the real worker's revoked /
+    /// instance-not-active response is `{"error": "..."}` with no `valid`
+    /// field at all, and that must be treated as a definitive rejection,
+    /// not fail to deserialize.
+    #[serde(default)]
     valid: bool,
     license_expires_at: Option<i64>,
     lease: Option<Lease>,
@@ -297,11 +302,17 @@ impl Keylight {
             self.verify_or_reject(lease)?;
         }
         if !resp.valid {
-            // Preserve fallback/expired lease so the manager (and state()) can resolve .limited/.expired.
-            if let Some(lease) = &resp.lease {
-                self.store_lease(lease)?;
-                self.save_expiry(resp.license_expires_at)?;
+            // Definitive rejection: persist whatever lease the server sent (e.g.
+            // "expired"/"fallback" so state() can resolve .limited/.expired), or
+            // clear the cached one when it sent none at all. The real worker's
+            // revoked/instance-not-active responses are `{"error": "..."}` with
+            // no `lease` field, so leaving the old (still "active") lease in
+            // place would let state() keep reporting Licensed off stale data.
+            match &resp.lease {
+                Some(lease) => self.store_lease(lease)?,
+                None => self.store.delete(account::LEASE)?,
             }
+            self.save_expiry(resp.license_expires_at)?;
             self.emit_lifecycle(&prev_state, prev_expiry);
             return Ok(ValidationResult {
                 valid: false,

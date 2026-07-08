@@ -120,6 +120,26 @@ impl Transport for AlwaysDown {
     }
 }
 
+/// Returns a fixed HTTP status + body verbatim for `post_json` (used to
+/// simulate the real worker's 422 revoke/deactivation response).
+struct FixedStatusResponse(u16, String);
+impl Transport for FixedStatusResponse {
+    fn post_json(&self, _: &str, _: &[(String, String)], _: &str) -> TransportOutcome {
+        TransportOutcome::Response(HttpResponse {
+            status: self.0,
+            body: self.1.clone(),
+            retry_after: None,
+        })
+    }
+    fn get(&self, _: &str, _: &[(String, String)]) -> TransportOutcome {
+        TransportOutcome::Response(HttpResponse {
+            status: 200,
+            body: "{}".into(),
+            retry_after: None,
+        })
+    }
+}
+
 /// (a) Revoke caught on launch: a cached, currently-active lease plus a server
 /// that now returns a definitive rejection (with a signed `expired`-status
 /// lease, mirroring how the API communicates revocation) must deny after
@@ -194,6 +214,75 @@ fn past_offline_cap_denies_even_with_valid_cached_lease() {
         kl.state(),
         LicenseState::Licensed,
         "a license unseen by the server for >15 days must not resolve as Licensed"
+    );
+}
+
+/// (e) Real dashboard revoke / deactivated-instance shape: HTTP 422, body
+/// `{"error": "Instance not found or deactivated"}` — no `lease` field and no
+/// `valid` field at all (the worker omits it entirely on this path, unlike the
+/// synthetic `"valid":false` bodies used elsewhere in this file). `valid` must
+/// default to `false` on deserialization rather than fail, and since there is
+/// no lease to fall back to, the stale cached "active" lease must be cleared
+/// so `state()` denies instead of continuing to report Licensed off stale data.
+#[test]
+fn real_422_no_lease_revoke_clears_stale_lease_and_denies() {
+    let signing = signing_key();
+    let store = store_with_active_lease("kl-launch-422-no-lease", &signing, now());
+    let cfg = config_trusting(&signing, Some(15));
+    let kl = Keylight::with_parts(
+        cfg,
+        store.clone(),
+        Arc::new(FixedStatusResponse(
+            422,
+            r#"{"error":"Instance not found or deactivated"}"#.into(),
+        )),
+    );
+
+    assert_eq!(
+        kl.state(),
+        LicenseState::Licensed,
+        "precondition: cached lease starts out valid"
+    );
+
+    kl.check_on_launch()
+        .expect("a definitive 422 rejection is not a transport error");
+
+    assert_ne!(
+        kl.state(),
+        LicenseState::Licensed,
+        "a real revoke/deactivation (422, no lease, no `valid` field) must deny"
+    );
+    assert!(
+        store.get_string(account::LEASE).is_none(),
+        "the stale 'active' lease must be cleared, not left behind for state() to reuse"
+    );
+}
+
+/// (f) Real 422 rejection that *does* carry a lease (e.g. `"expired"` status,
+/// which the worker sends on some definitive-rejection paths): that lease must
+/// still be stored so `state()` can resolve it (expired), matching existing
+/// fallback/expired handling — this must not regress when the no-lease branch
+/// above starts clearing the store.
+#[test]
+fn real_422_with_expired_lease_keeps_lease_and_resolves_expired() {
+    let signing = signing_key();
+    let store = store_with_active_lease("kl-launch-422-with-lease", &signing, now());
+    let cfg = config_trusting(&signing, Some(15));
+    let expired_lease = lease_json(&signing, "expired", now() - 1000);
+    let body = format!(r#"{{"valid":false,"lease":{expired_lease}}}"#);
+    let kl = Keylight::with_parts(cfg, store.clone(), Arc::new(FixedStatusResponse(422, body)));
+
+    kl.check_on_launch()
+        .expect("a definitive 422 rejection is not a transport error");
+
+    assert_eq!(
+        kl.state(),
+        LicenseState::Expired,
+        "a 422 with an expired lease must resolve to Expired, with the lease kept"
+    );
+    assert!(
+        store.get_string(account::LEASE).is_some(),
+        "the server-sent expired lease must be persisted, not cleared"
     );
 }
 
