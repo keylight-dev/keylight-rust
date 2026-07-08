@@ -5,6 +5,22 @@ All notable changes to the Keylight Rust SDK are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.2] - 2026-07-08
+
+### Fixed
+
+- **Revocation now enforced; offline use bounded to 15 days.** Launch always performs
+  a server `validate` (no staleness gating), so a dashboard revoke or expiry lands on
+  the next launch instead of lagging the refresh cadence. A definitive server rejection
+  with no lease clears the stale cached lease instead of leaving a "still-active" lease
+  in place.
+- **Offline cap is fail-closed on a missing online anchor.** `state()` skipped the
+  `max_offline_days` check when no `last_validated_online` timestamp was stored, so a
+  signature-valid cached lease still resolved to `Licensed` — letting anyone who deletes
+  the anchor reset the offline clock indefinitely. A missing *or* stale anchor now drops
+  the lease (parity with `cached_lease()` and the Swift SDK's `isWithinOfflineGrace`).
+  `max_offline_days = None` still disables the cap; trials and free-tier are unaffected.
+
 ## [0.3.1] - 2026-07-07
 
 ### Documentation
