@@ -73,7 +73,13 @@ jobs:
       - name: Publish tauri-plugin-keylight-api to npm
         working-directory: tauri-plugin-keylight
         run: |
-          npm install -g npm@latest # OIDC trusted publishing needs npm >= 11.5.1
+          node -v; npm -v
+          # Node 24 already bundles npm >= 11.5.1 (needed for OIDC trusted
+          # publishing). Do NOT `npm i -g npm@latest` — that has left the global
+          # npm unable to resolve 'sigstore', which crashes provenance generation
+          # and fails this job even when there is nothing new to publish.
+          # Keep this package in lockstep with the SDK release version.
+          npm version "${GITHUB_REF_NAME#v}" --no-git-tag-version --allow-same-version
           npm ci
           # Idempotent: succeed if this version is already published.
           if npm publish --access public 2>publish.err; then
