@@ -110,5 +110,13 @@ jobs:
         run: |
           mkdir -p dist
           cp "target/release/keylight${{ matrix.ext }}" "dist/keylight-${{ matrix.target }}${{ matrix.ext }}"
+      - name: Extract changelog notes for this tag
+        shell: bash
+        run: |
+          ver="${GITHUB_REF_NAME#v}"
+          awk -v v="$ver" '$0 ~ "^## \\[" v "\\]" {p=1;print;next} p && /^## \[/ {exit} p {print}' CHANGELOG.md > RELEASE_NOTES.md
+          if [ ! -s RELEASE_NOTES.md ]; then echo "warning: no CHANGELOG section for $ver" >&2; fi
       - uses: softprops/action-gh-release@v2
-        with: { files: "dist/keylight-${{ matrix.target }}*" }
+        with:
+          files: "dist/keylight-${{ matrix.target }}*"
+          body_path: RELEASE_NOTES.md
