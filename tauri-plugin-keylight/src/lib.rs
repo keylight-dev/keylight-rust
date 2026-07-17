@@ -52,7 +52,10 @@ fn refresh_if_needed(state: State<'_, KeylightState>) -> Result<Option<bool>, St
 /// Send the anonymous keyless beacon. `keylessState` is the wire value:
 /// `"trial"`, `"free_tier"`, or `"expired"`.
 #[tauri::command]
-fn report_keyless_state(state: State<'_, KeylightState>, keyless_state: String) -> Result<(), String> {
+fn report_keyless_state(
+    state: State<'_, KeylightState>,
+    keyless_state: String,
+) -> Result<(), String> {
     let ks = parse_keyless_state(&keyless_state)
         .ok_or_else(|| format!("unknown keyless state: {keyless_state}"))?;
     state.0.report_keyless_state(ks);

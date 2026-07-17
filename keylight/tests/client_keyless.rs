@@ -56,7 +56,12 @@ fn keyless_heartbeat_includes_machine_hash_when_hardware_id_present() {
         .with_device(Arc::new(FixedDeviceIdentity("hardware-1".into())));
     kl.report_keyless_state(KeylessState::FreeTier);
 
-    let body = transport.last_body.lock().unwrap().clone().expect("a heartbeat should have been posted");
+    let body = transport
+        .last_body
+        .lock()
+        .unwrap()
+        .clone()
+        .expect("a heartbeat should have been posted");
     let json: serde_json::Value = serde_json::from_str(&body).unwrap();
     assert_eq!(
         json.get("machine_hash").and_then(|v| v.as_str()),
@@ -73,7 +78,12 @@ fn keyless_heartbeat_omits_machine_hash_when_no_hardware_id() {
         .with_device(Arc::new(FixedDeviceIdentity("".into())));
     kl.report_keyless_state(KeylessState::FreeTier);
 
-    let body = transport.last_body.lock().unwrap().clone().expect("a heartbeat should have been posted");
+    let body = transport
+        .last_body
+        .lock()
+        .unwrap()
+        .clone()
+        .expect("a heartbeat should have been posted");
     let json: serde_json::Value = serde_json::from_str(&body).unwrap();
     assert!(
         json.get("machine_hash").is_none(),
@@ -139,20 +149,22 @@ fn keyless_machine_hash_survives_transient_hardware_id_failure() {
     // First beacon reads the hardware id and caches it; second beacon's fresh
     // read fails but the persisted id keeps machine_hash present and identical.
     let transport = Arc::new(CapturingOk::new());
-    let kl = client("kl-keyless-cache", transport.clone()).with_device(Arc::new(
-        FlakyOnceDevice {
-            reads: AtomicU32::new(0),
-        },
-    ));
+    let kl = client("kl-keyless-cache", transport.clone()).with_device(Arc::new(FlakyOnceDevice {
+        reads: AtomicU32::new(0),
+    }));
     kl.report_keyless_state(KeylessState::FreeTier);
     assert_eq!(
-        last_json(&transport).get("machine_hash").and_then(|v| v.as_str()),
+        last_json(&transport)
+            .get("machine_hash")
+            .and_then(|v| v.as_str()),
         Some(CANONICAL_HASH)
     );
     // State change bypasses the 24h debounce so a second beacon is sent.
     kl.report_keyless_state(KeylessState::Trial);
     assert_eq!(
-        last_json(&transport).get("machine_hash").and_then(|v| v.as_str()),
+        last_json(&transport)
+            .get("machine_hash")
+            .and_then(|v| v.as_str()),
         Some(CANONICAL_HASH),
         "cached hardware id must be reused when a fresh read fails"
     );
@@ -273,7 +285,6 @@ fn activate_omits_machine_hash_when_never_readable() {
     let kl = Keylight::with_parts(cfg, store, transport.clone())
         .with_device(Arc::new(FixedDeviceIdentity("".into())));
     assert!(kl.activate("TEST-KEY0-0000-0001").unwrap().activated);
-    let body: serde_json::Value =
-        serde_json::from_str(&transport.0.lock().unwrap()[0]).unwrap();
+    let body: serde_json::Value = serde_json::from_str(&transport.0.lock().unwrap()[0]).unwrap();
     assert!(body.get("machine_hash").is_none());
 }
