@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-report-keyless-state"
+description = "Enables the report_keyless_state command without any pre-configured scope."
+commands.allow = ["report_keyless_state"]
+
+[[permission]]
+identifier = "deny-report-keyless-state"
+description = "Denies the report_keyless_state command without any pre-configured scope."
+commands.deny = ["report_keyless_state"]

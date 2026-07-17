@@ -307,6 +307,18 @@
           "markdownDescription": "Denies the activate command without any pre-configured scope."
         },
         {
+          "description": "Enables the check_on_launch command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-check-on-launch",
+          "markdownDescription": "Enables the check_on_launch command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the check_on_launch command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-check-on-launch",
+          "markdownDescription": "Denies the check_on_launch command without any pre-configured scope."
+        },
+        {
           "description": "Enables the has_entitlement command without any pre-configured scope.",
           "type": "string",
           "const": "allow-has-entitlement",
@@ -317,6 +329,30 @@
           "type": "string",
           "const": "deny-has-entitlement",
           "markdownDescription": "Denies the has_entitlement command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the refresh_if_needed command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-refresh-if-needed",
+          "markdownDescription": "Enables the refresh_if_needed command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the refresh_if_needed command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-refresh-if-needed",
+          "markdownDescription": "Denies the refresh_if_needed command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the report_keyless_state command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-report-keyless-state",
+          "markdownDescription": "Enables the report_keyless_state command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the report_keyless_state command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-report-keyless-state",
+          "markdownDescription": "Denies the report_keyless_state command without any pre-configured scope."
         },
         {
           "description": "Enables the validate command without any pre-configured scope.",
@@ -331,10 +367,10 @@
           "markdownDescription": "Denies the validate command without any pre-configured scope."
         },
         {
-          "description": "Allows activating and validating licenses and checking entitlements through the Keylight plugin.\n#### This default permission set includes:\n\n- `allow-activate`\n- `allow-validate`\n- `allow-has-entitlement`",
+          "description": "Allows activating, validating, and refreshing licenses, checking entitlements, and sending the keyless beacon through the Keylight plugin.\n#### This default permission set includes:\n\n- `allow-activate`\n- `allow-validate`\n- `allow-has-entitlement`\n- `allow-check-on-launch`\n- `allow-refresh-if-needed`\n- `allow-report-keyless-state`",
           "type": "string",
           "const": "default",
-          "markdownDescription": "Allows activating and validating licenses and checking entitlements through the Keylight plugin.\n#### This default permission set includes:\n\n- `allow-activate`\n- `allow-validate`\n- `allow-has-entitlement`"
+          "markdownDescription": "Allows activating, validating, and refreshing licenses, checking entitlements, and sending the keyless beacon through the Keylight plugin.\n#### This default permission set includes:\n\n- `allow-activate`\n- `allow-validate`\n- `allow-has-entitlement`\n- `allow-check-on-launch`\n- `allow-refresh-if-needed`\n- `allow-report-keyless-state`"
         }
       ]
     }

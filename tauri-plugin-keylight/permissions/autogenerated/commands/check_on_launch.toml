@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-check-on-launch"
+description = "Enables the check_on_launch command without any pre-configured scope."
+commands.allow = ["check_on_launch"]
+
+[[permission]]
+identifier = "deny-check-on-launch"
+description = "Denies the check_on_launch command without any pre-configured scope."
+commands.deny = ["check_on_launch"]

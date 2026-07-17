@@ -1,5 +1,12 @@
 "$schema" = "schemas/schema.json"
 
 [default]
-description = "Allows activating and validating licenses and checking entitlements through the Keylight plugin."
-permissions = ["allow-activate", "allow-validate", "allow-has-entitlement"]
+description = "Allows activating, validating, and refreshing licenses, checking entitlements, and sending the keyless beacon through the Keylight plugin."
+permissions = [
+    "allow-activate",
+    "allow-validate",
+    "allow-has-entitlement",
+    "allow-check-on-launch",
+    "allow-refresh-if-needed",
+    "allow-report-keyless-state",
+]
