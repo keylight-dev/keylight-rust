@@ -1945,7 +1945,7 @@ dependencies = [
 
 [[package]]
 name = "keylight"
-version = "0.3.2"
+version = "0.3.3"
 dependencies = [
  "base64 0.22.1",
  "blake3",
@@ -1962,7 +1962,7 @@ dependencies = [
 
 [[package]]
 name = "keylight-cli"
-version = "0.3.2"
+version = "0.3.3"
 dependencies = [
  "assert_cmd",
  "clap",
@@ -1972,7 +1972,7 @@ dependencies = [
 
 [[package]]
 name = "keylight-notes-demo"
-version = "0.3.2"
+version = "0.3.3"
 dependencies = [
  "clap",
  "keylight",
@@ -3647,7 +3647,7 @@ dependencies = [
 
 [[package]]
 name = "tauri-plugin-keylight"
-version = "0.3.2"
+version = "0.3.3"
 dependencies = [
  "keylight",
  "serde",

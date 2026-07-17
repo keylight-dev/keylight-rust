@@ -5,6 +5,44 @@ All notable changes to the Keylight Rust SDK are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.3] - 2026-07-17
+
+### Added
+
+- **`machine_hash` on activate and validate.** The same cross-SDK device hash
+  the keyless beacon sends is now attached to `activate` and `validate`
+  requests, so the dashboard counts a device that converts from keyless to
+  licensed (or keeps validating) as **one** daily-active device instead of two.
+  Omitted, as before, when no stable hardware id is available.
+- **Tauri plugin: three new commands** — `checkOnLaunch()` (server validation
+  with no staleness gate, for app launch so a dashboard revoke takes effect
+  immediately), `refreshIfNeeded()` (re-validate only when the SDK's
+  debounce/staleness policy says so; returns `null` when skipped), and
+  `reportKeylessState(state)` (the anonymous keyless beacon, debounced 24h in
+  the SDK). Each has its own permission and all three are included in the
+  plugin's `default` permission set.
+- **Tauri plugin: optional built-in heartbeat scheduler.**
+  `init_with_heartbeat(config, HeartbeatOptions)` spawns a background thread
+  that periodically calls `refresh_if_needed` and, in keyless states, sends the
+  keyless beacon (default every 6h, floor 60s). Off by default — `init()` is
+  unchanged.
+
+### Fixed
+
+- **Hardware id is cached for stability.** The hardware id is persisted on
+  every successful OS read and reused on a transient read failure, so the
+  derived `machine_hash` stays stable across beacons instead of silently
+  disappearing (which would have created a second device server-side). There is
+  still no random fallback: if no id has ever been read, the field is omitted.
+- **Keyless beacon now uses the shared retry/backoff loop.** A transient
+  network failure or 5xx no longer silently drops the beacon; the 24h debounce
+  state is persisted only on a confirmed HTTP 200, so a failed send is retried
+  on the next opportunity instead of being suppressed for a day.
+- **`deactivate` now carries telemetry** (`app_version`/`sdk_version`/
+  `platform`) like every other route.
+- **macOS `IOPlatformUUID` parsing** trims whitespace and rejects empty values
+  instead of deriving a hash from a blank id.
+
 ## [0.3.2] - 2026-07-09
 
 ### Added
@@ -63,6 +101,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Ed25519 lease verification, trials, free-tier/keyless beacon, entitlements,
   and the first-party Tauri v2 plugin.
 
+[0.3.3]: https://github.com/keylight-dev/keylight-rust/compare/v0.3.2...v0.3.3
 [0.3.2]: https://github.com/keylight-dev/keylight-rust/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/keylight-dev/keylight-rust/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/keylight-dev/keylight-rust/compare/v0.2.0...v0.3.0
