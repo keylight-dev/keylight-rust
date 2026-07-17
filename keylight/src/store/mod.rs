@@ -15,6 +15,7 @@ pub mod account {
     pub const TRIAL_START: &str = "trial_start";
     pub const FREE_TIER_INSTANCE_ID: &str = "free_tier_instance_id";
     pub const KEYLESS_LAST_STATE: &str = "keyless_last_state";
+    pub const CACHED_HARDWARE_ID: &str = "cached_hardware_id";
     pub const LAST_KEYLESS_PING_AT: &str = "last_keyless_ping_at";
 }
 

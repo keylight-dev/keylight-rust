@@ -121,6 +121,26 @@ impl Keylight {
         serde_json::Value::Object(map).to_string()
     }
 
+    /// True hardware id with a persisted cache: a fresh OS read wins (and refreshes the
+    /// cache); on a transient read failure the last successfully read id is reused so the
+    /// derived `machine_hash` stays stable across beacons. NO random fallback — if no id
+    /// has ever been read this returns `None` and callers omit the field.
+    fn cached_hardware_id(&self) -> Option<String> {
+        match self.device.hardware_id() {
+            Some(hw) => {
+                let _ = self.store.set_string(account::CACHED_HARDWARE_ID, &hw);
+                Some(hw)
+            }
+            None => self.store.get_string(account::CACHED_HARDWARE_ID),
+        }
+    }
+    /// Cross-SDK `machine_hash` (lowercase hex) from the cached hardware id, if any.
+    fn machine_hash(&self) -> Option<String> {
+        self.cached_hardware_id().map(|hw| {
+            crate::machine::machine_hash(&self.config.tenant_id, &self.config.product_id, &hw)
+        })
+    }
+
     /// POST with retry/backoff. `decodable_4xx` lets a caller opt a 4xx body in (validate's 422).
     fn post(&self, path: &str, body: &str, decodable_4xx: &[u16]) -> Result<(u16, String)> {
         let url = self.api_url(path);
@@ -221,6 +241,9 @@ impl Keylight {
         if let Some(ft) = self.store.get_string(account::FREE_TIER_INSTANCE_ID) {
             map.insert("free_tier_instance_id".into(), ft.into());
         }
+        if let Some(hash) = self.machine_hash() {
+            map.insert("machine_hash".into(), hash.into());
+        }
         let body = self.body_with_telemetry(map);
 
         let (_, text) = match self.post("activate", &body, &[]) {
@@ -288,6 +311,9 @@ impl Keylight {
         let mut map = serde_json::Map::new();
         map.insert("license_key".into(), key.into());
         map.insert("instance_id".into(), instance.into());
+        if let Some(hash) = self.machine_hash() {
+            map.insert("machine_hash".into(), hash.into());
+        }
         let body = self.body_with_telemetry(map);
 
         let (_status, text) = match self.post("validate", &body, &[422]) {
@@ -354,7 +380,7 @@ impl Keylight {
             let mut map = serde_json::Map::new();
             map.insert("license_key".into(), k.into());
             map.insert("instance_id".into(), i.into());
-            let body = serde_json::Value::Object(map).to_string();
+            let body = self.body_with_telemetry(map);
             if let Err(e) = self.post("deactivate", &body, &[]) {
                 net_err = Some(e);
             }
@@ -495,26 +521,20 @@ impl Keylight {
         let mut map = serde_json::Map::new();
         map.insert("instance_id".into(), instance.into());
         map.insert("state".into(), state.wire().into());
-        if let Some(hw) = self.device.hardware_id() {
-            map.insert(
-                "machine_hash".into(),
-                crate::machine::machine_hash(&self.config.tenant_id, &self.config.product_id, &hw)
-                    .into(),
-            );
+        if let Some(hash) = self.machine_hash() {
+            map.insert("machine_hash".into(), hash.into());
         }
         let body = self.body_with_telemetry(map);
-        let url = self.api_url("keyless");
-        if let TransportOutcome::Response(r) =
-            self.transport.post_json(&url, &self.headers(), &body)
-        {
-            if r.status == 200 {
-                let _ = self
-                    .store
-                    .set_string(account::KEYLESS_LAST_STATE, state.wire());
-                let _ = self
-                    .store
-                    .set_string(account::LAST_KEYLESS_PING_AT, &Self::now().to_string());
-            }
+        // Route through the shared retry/backoff loop; with no decodable 4xx an
+        // `Ok` here is exactly an HTTP 200, so the debounce state is persisted
+        // only on success. Errors are swallowed (anonymous best-effort beacon).
+        if self.post("keyless", &body, &[]).is_ok() {
+            let _ = self
+                .store
+                .set_string(account::KEYLESS_LAST_STATE, state.wire());
+            let _ = self
+                .store
+                .set_string(account::LAST_KEYLESS_PING_AT, &Self::now().to_string());
         }
     }
     /// Resolve the current high-level state from cached data (no network).

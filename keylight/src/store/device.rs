@@ -53,7 +53,8 @@ fn read_machine_id() -> Option<String> {
     text.lines()
         .find(|l| l.contains("IOPlatformUUID"))
         .and_then(|l| l.split('"').nth(3))
-        .map(|s| s.to_string())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
 }
 #[cfg(target_os = "windows")]
 fn read_machine_id() -> Option<String> {
