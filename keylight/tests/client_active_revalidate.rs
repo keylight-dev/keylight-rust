@@ -83,63 +83,47 @@ fn store_with_active_lease(dir: &str, signing: &SigningKey) -> Arc<EncryptedFile
     store
 }
 
-/// Fixed status + body, counting every POST so tests can assert call counts.
+/// Counting transport: replies with a fixed status + body, or — when built with
+/// [`Counting::offline`] — fails at the transport level with no HTTP response at
+/// all (offline / DNS). Every POST is counted so tests can assert call counts.
 struct Counting {
-    status: u16,
-    body: String,
+    response: Option<(u16, String)>,
     calls: AtomicUsize,
 }
 impl Counting {
     fn new(status: u16, body: &str) -> Arc<Self> {
         Arc::new(Self {
-            status,
-            body: body.into(),
+            response: Some((status, body.into())),
+            calls: AtomicUsize::new(0),
+        })
+    }
+    fn offline() -> Arc<Self> {
+        Arc::new(Self {
+            response: None,
             calls: AtomicUsize::new(0),
         })
     }
     fn count(&self) -> usize {
         self.calls.load(Ordering::SeqCst)
+    }
+    fn outcome(&self) -> TransportOutcome {
+        match &self.response {
+            Some((status, body)) => TransportOutcome::Response(HttpResponse {
+                status: *status,
+                body: body.clone(),
+                retry_after: None,
+            }),
+            None => TransportOutcome::Terminal("offline".into()),
+        }
     }
 }
 impl Transport for Counting {
     fn post_json(&self, _: &str, _: &[(String, String)], _: &str) -> TransportOutcome {
         self.calls.fetch_add(1, Ordering::SeqCst);
-        TransportOutcome::Response(HttpResponse {
-            status: self.status,
-            body: self.body.clone(),
-            retry_after: None,
-        })
+        self.outcome()
     }
     fn get(&self, _: &str, _: &[(String, String)]) -> TransportOutcome {
-        TransportOutcome::Response(HttpResponse {
-            status: 200,
-            body: "{}".into(),
-            retry_after: None,
-        })
-    }
-}
-
-/// Transport-level failure with no HTTP response at all (offline / DNS), counted.
-struct CountingDown {
-    calls: AtomicUsize,
-}
-impl CountingDown {
-    fn new() -> Arc<Self> {
-        Arc::new(Self {
-            calls: AtomicUsize::new(0),
-        })
-    }
-    fn count(&self) -> usize {
-        self.calls.load(Ordering::SeqCst)
-    }
-}
-impl Transport for CountingDown {
-    fn post_json(&self, _: &str, _: &[(String, String)], _: &str) -> TransportOutcome {
-        self.calls.fetch_add(1, Ordering::SeqCst);
-        TransportOutcome::Terminal("offline".into())
-    }
-    fn get(&self, _: &str, _: &[(String, String)]) -> TransportOutcome {
-        TransportOutcome::Terminal("offline".into())
+        self.outcome()
     }
 }
 
@@ -259,7 +243,7 @@ fn transient_failure_does_not_downgrade() {
     let signing = signing_key();
     let store = store_with_active_lease("kl-active-transient", &signing);
     let lease_before = store.get_string(account::LEASE);
-    let transport = CountingDown::new();
+    let transport = Counting::offline();
     let kl = Keylight::with_parts(config_trusting(&signing), store.clone(), transport.clone());
 
     assert!(

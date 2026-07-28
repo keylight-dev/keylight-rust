@@ -59,10 +59,9 @@ pub struct Keylight {
     transport: Arc<dyn Transport>,
     device: Arc<dyn DeviceIdentity>,
     on_event: Option<Box<dyn Fn(crate::state::LicenseLifecycleEvent) + Send + Sync>>,
-    /// In-memory debounce anchor for [`Keylight::active_revalidate`]. Deliberately
-    /// **not** persisted (and monotonic, so a wall-clock change can't stretch or
-    /// shrink the window): the window is per-process and a restart is always
-    /// allowed to re-check immediately.
+    /// Debounce anchor for [`Keylight::active_revalidate`] — monotonic, so a
+    /// wall-clock change can neither stretch nor shrink the window. See that
+    /// method for why the window is deliberately per-process and unpersisted.
     last_active_revalidate_at: Mutex<Option<Instant>>,
 }
 
@@ -70,14 +69,12 @@ impl Keylight {
     /// Construct with the default encrypted-file store + ureq transport.
     pub fn new(config: KeylightConfig) -> Result<Self> {
         let ns = format!("{}-{}", config.tenant_id, config.product_id);
-        Ok(Self {
-            store: Arc::new(EncryptedFileStore::new(&ns)?),
-            transport: Arc::new(UreqTransport::default()),
-            device: Arc::new(SystemDeviceIdentity),
+        let store = Arc::new(EncryptedFileStore::new(&ns)?);
+        Ok(Self::with_parts(
             config,
-            on_event: None,
-            last_active_revalidate_at: Mutex::new(None),
-        })
+            store,
+            Arc::new(UreqTransport::default()),
+        ))
     }
     /// Construct with custom store + transport (tests, alternate backends).
     pub fn with_parts(

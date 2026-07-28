@@ -20,6 +20,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   session. Previously a revoke could not land mid-session until the lease went
   stale (6 h) or the app relaunched.
 
+### Fixed
+
+- **Telemetry values are clamped to the server's limits.** `app_version` (which
+  the host app supplies) is truncated to 64 characters, `platform` to 32, before
+  being sent on activate / validate / keyless. An over-long value was rejected
+  by the API with a 400 for the *whole* request — so an unusually long app
+  version string could fail activation outright, not just lose the field. Parity
+  with the JS SDK.
+
 ## [0.3.3] - 2026-07-17
 
 ### Added
