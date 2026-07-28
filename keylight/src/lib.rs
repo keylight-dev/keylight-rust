@@ -53,7 +53,7 @@
 //! | Area | Entry points |
 //! |------|--------------|
 //! | Lifecycle | [`Keylight::activate`], [`Keylight::validate`], [`Keylight::deactivate`] |
-//! | Offline refresh | [`Keylight::refresh_if_needed`], [`Keylight::check_on_launch`] |
+//! | Offline refresh | [`Keylight::refresh_if_needed`], [`Keylight::check_on_launch`], [`Keylight::active_revalidate`] |
 //! | State & entitlements | [`Keylight::state`], [`LicenseState`], [`Keylight::has_entitlement`] |
 //! | Trials & free tier | [`Keylight::start_trial`], [`Keylight::check_trial`], [`Keylight::report_keyless_state`] |
 //! | Events | [`Keylight::with_event_handler`], [`LicenseLifecycleEvent`] |

@@ -9,7 +9,8 @@ use crate::store::device::{DeviceIdentity, SystemDeviceIdentity};
 use crate::store::{LicenseStore, account, encrypted_file::EncryptedFileStore};
 use crate::{KeylightConfig, KeylightError, Lease, Result, telemetry, verify_lease};
 use serde::Deserialize;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone)]
 pub struct ActivationResult {
@@ -58,6 +59,11 @@ pub struct Keylight {
     transport: Arc<dyn Transport>,
     device: Arc<dyn DeviceIdentity>,
     on_event: Option<Box<dyn Fn(crate::state::LicenseLifecycleEvent) + Send + Sync>>,
+    /// In-memory debounce anchor for [`Keylight::active_revalidate`]. Deliberately
+    /// **not** persisted (and monotonic, so a wall-clock change can't stretch or
+    /// shrink the window): the window is per-process and a restart is always
+    /// allowed to re-check immediately.
+    last_active_revalidate_at: Mutex<Option<Instant>>,
 }
 
 impl Keylight {
@@ -70,6 +76,7 @@ impl Keylight {
             device: Arc::new(SystemDeviceIdentity),
             config,
             on_event: None,
+            last_active_revalidate_at: Mutex::new(None),
         })
     }
     /// Construct with custom store + transport (tests, alternate backends).
@@ -84,6 +91,7 @@ impl Keylight {
             transport,
             device: Arc::new(SystemDeviceIdentity),
             on_event: None,
+            last_active_revalidate_at: Mutex::new(None),
         }
     }
     /// Register a handler invoked when the resolved license state crosses a lifecycle transition.
@@ -627,6 +635,54 @@ impl Keylight {
         }
         Ok(())
     }
+    /// Force a re-validation on **active use** — app foreground, window focus,
+    /// popover open — debounced to 60s in memory (parity with Swift
+    /// `activeRevalidate()`).
+    ///
+    /// Unlike [`Self::refresh_if_needed`] this bypasses the debounce/stale/
+    /// near-expiry gates entirely, so a dashboard revoke lands within minutes of
+    /// the user next touching the app instead of waiting for the lease to go
+    /// stale (up to 6h) or for a relaunch (up to the full lease lifetime).
+    ///
+    /// Behavior:
+    /// - **No stored license key** — no-op, no network call, returns `None`.
+    /// - **Inside the 60s window** — suppressed, returns `None`. The window is
+    ///   in-memory only: it does not survive a process restart, and it is
+    ///   consumed by the *attempt*, so a failed call also holds it (matching
+    ///   Swift, and keeping a hammered foreground hook off the network).
+    /// - **Definitive rejection** (`valid:false`, e.g. the revoke path's HTTP
+    ///   422) — downgrades immediately through the same [`Self::validate`]
+    ///   rejection branch, and returns `Some(result)` with `valid == false`.
+    /// - **Transient failure** (offline, timeout, 5xx, rate limit) — returns
+    ///   `None` with state untouched. This is the safety property: a network
+    ///   blip must never downgrade a live session. `validate()` mutates nothing
+    ///   on the error path, so the cached lease survives intact and access stays
+    ///   governed by the offline bound in [`Self::state`].
+    ///
+    /// The error is intentionally swallowed rather than returned: this is a
+    /// fire-and-forget UI hook whose whole contract is "never break the running
+    /// session", so there is no failure a caller could act on differently. Use
+    /// [`Self::validate`] directly when you need the error.
+    pub fn active_revalidate(&self) -> Option<ValidationResult> {
+        if !self.has_stored_license() {
+            return None;
+        }
+        {
+            // A panic while holding this lock is not reachable (the guarded
+            // section is two moves), so recover from poisoning rather than
+            // letting an unrelated panic elsewhere disable revalidation.
+            let mut last = self
+                .last_active_revalidate_at
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            if last.is_some_and(|t| t.elapsed() < ACTIVE_REVALIDATE_DEBOUNCE) {
+                return None;
+            }
+            *last = Some(Instant::now());
+        }
+        self.validate().ok()
+    }
+
     /// Hosted upgrade URL pre-filled with the cached key (parity with Swift upgradeURL).
     pub fn upgrade_url(&self) -> Option<String> {
         let key = self.cached_license_key()?;
@@ -657,6 +713,8 @@ impl Keylight {
 
 const REFRESH_DEBOUNCE: i64 = 300; // 5 min
 const REFRESH_STALE: i64 = 21600; // 6 h
+/// In-memory floor between two `active_revalidate()` network calls (Swift parity).
+const ACTIVE_REVALIDATE_DEBOUNCE: Duration = Duration::from_secs(60);
 
 fn urlencode(s: &str) -> String {
     use std::fmt::Write;
