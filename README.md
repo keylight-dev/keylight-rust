@@ -205,6 +205,7 @@ if (await hasEntitlement('pro')) {
 | `deactivate()` | Releases the seat and clears local license state. Call on uninstall or device switch. |
 | `refresh_if_needed() -> Option<ValidationResult>` | Validates only if due (debounce 5 min, stale 6 h, or within 24 h of expiry). Safe to call often. |
 | `check_on_launch()` | Convenience: refresh if a license is stored, else no-op. |
+| `active_revalidate() -> Option<ValidationResult>` | Forces a validate on active use (foreground / focus / popover), debounced 60 s in memory. Catches a revoke mid-session; a network blip never downgrades. |
 
 ## License States
 
@@ -270,7 +271,13 @@ There are **no background threads**. The host drives refresh on launch and on me
 ```rust
 kl.check_on_launch()?;       // validate if due, on startup
 kl.refresh_if_needed()?;     // call again on window-focus / purchase / resume
+kl.active_revalidate();      // force a check when the user brings the app forward
 ```
+
+`refresh_if_needed()` respects a staleness policy (5 min debounce, 6 h stale), so with a long-lived
+lease a revoke can sit unnoticed until the next launch. `active_revalidate()` is the prompt
+counterpart: it always calls the server (debounced 60 s, in memory only), downgrades immediately on a
+definitive rejection, and leaves the session untouched on a transient failure.
 
 Trials and free tier are local and offline-first:
 

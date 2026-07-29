@@ -5,6 +5,35 @@ All notable changes to the Keylight Rust SDK are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.4] - 2026-07-29
+
+### Added
+
+- **`active_revalidate()` — prompt revocation enforcement on active use.** A new
+  primitive (Swift parity with `activeRevalidate()`) that forces a server
+  validate when the user brings the app forward (foreground / window focus /
+  popover open), bypassing the staleness gates `refresh_if_needed()` applies.
+  Debounced to 60 s **in memory**, so the window never survives a process
+  restart. A definitive rejection (e.g. a dashboard revoke's HTTP 422)
+  downgrades the session immediately; a transient/network failure returns
+  `None` and leaves state exactly as it was — a blip never downgrades a live
+  session. Previously a revoke could not land mid-session until the lease went
+  stale (6 h) or the app relaunched.
+
+### Fixed
+
+- **Telemetry values are clamped to the server's limits.** `app_version` (which
+  the host app supplies) is truncated to 64, `platform` to 32, before being sent
+  on activate / validate / keyless. An over-long value was rejected by the API
+  with a 400 for the *whole* request — so an unusually long app version string
+  could fail activation outright, not just lose the field. Parity with the JS
+  SDK.
+
+  The limit is measured in UTF-16 code units, matching what the API actually
+  enforces. Counting `char`s instead would disagree for text outside the BMP —
+  64 emoji are 64 `char`s but 128 code units — so a value the SDK considered
+  clamped could still have been rejected.
+
 ## [0.3.3] - 2026-07-17
 
 ### Added
