@@ -1,7 +1,7 @@
 use assert_cmd::Command;
 #[test]
 fn help_lists_subcommands() {
-    Command::cargo_bin("keylight")
+    Command::cargo_bin("keylight-demo")
         .unwrap()
         .arg("--help")
         .assert()
@@ -9,7 +9,7 @@ fn help_lists_subcommands() {
 }
 #[test]
 fn missing_required_tenant_fails() {
-    Command::cargo_bin("keylight")
+    Command::cargo_bin("keylight-demo")
         .unwrap()
         .args(["status"])
         .env_remove("KEYLIGHT_TENANT")
