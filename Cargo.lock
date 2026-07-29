@@ -1961,21 +1961,21 @@ dependencies = [
 ]
 
 [[package]]
-name = "keylight-cli"
+name = "keylight-notes-demo"
+version = "0.3.4"
+dependencies = [
+ "clap",
+ "keylight",
+]
+
+[[package]]
+name = "keylight-sdk-demo"
 version = "0.3.4"
 dependencies = [
  "assert_cmd",
  "clap",
  "keylight",
  "serde_json",
-]
-
-[[package]]
-name = "keylight-notes-demo"
-version = "0.3.4"
-dependencies = [
- "clap",
- "keylight",
 ]
 
 [[package]]

@@ -1,0 +1,30 @@
+[package]
+name = "keylight-sdk-demo"
+description = "Demo CLI exercising the Keylight Rust SDK — not the Keylight management CLI"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+# Deliberately NOT published, and deliberately NOT named `keylight`.
+#
+# The real Keylight CLI is a separate crate in its own repo
+# (keylight-dev/keylight-cli, Apache-2.0) and owns both the `keylight-cli`
+# crate name and the `keylight` binary name. This package is a demo that
+# exercises the SDK; shipping it as `keylight` put a different tool on users'
+# PATH under the official name, and leaving it publishable meant a stray
+# `cargo publish --workspace` could take the real CLI's name on crates.io.
+publish = false
+
+[[bin]]
+name = "keylight-demo"
+path = "src/main.rs"
+
+[dependencies]
+keylight = { path = "../keylight", version = "0.3.0" }
+clap = { version = "4", features = ["derive", "env"] }
+serde_json = "1"
+
+[dev-dependencies]
+assert_cmd = "2"

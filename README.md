@@ -82,7 +82,7 @@ This workspace contains:
 | Crate | Description | Distribution |
 |-------|-------------|--------------|
 | [`keylight`](./keylight) | Core Rust SDK for any Rust application | [![crates.io](https://img.shields.io/crates/v/keylight.svg)](https://crates.io/crates/keylight) [![docs](https://docs.rs/keylight/badge.svg)](https://docs.rs/keylight) |
-| [`keylight-cli`](./keylight-cli) | Reference CLI / template for white-labeled `yourapp activate` commands (also a dev/ops & CI utility) | Prebuilt binaries on [GitHub Releases](https://github.com/keylight-dev/keylight-rust/releases) |
+| [`keylight-sdk-demo`](./keylight-sdk-demo) | Reference CLI / template for white-labeled `yourapp activate` commands (also a dev/ops & CI utility). Ships as `keylight-demo` — **not** the [Keylight management CLI](https://github.com/keylight-dev/keylight-cli), which is `keylight`. | Prebuilt binaries on [GitHub Releases](https://github.com/keylight-dev/keylight-rust/releases) |
 | [`tauri-plugin-keylight`](./tauri-plugin-keylight) | Tauri v2 plugin (Rust side) with capability permissions | [![crates.io](https://img.shields.io/crates/v/tauri-plugin-keylight.svg)](https://crates.io/crates/tauri-plugin-keylight) |
 | [`tauri-plugin-keylight-api`](./tauri-plugin-keylight) | Tauri v2 plugin JS/TS bindings (ESM/CJS + `.d.ts`) | [![npm](https://img.shields.io/npm/v/tauri-plugin-keylight-api.svg)](https://www.npmjs.com/package/tauri-plugin-keylight-api) |
 | [`keylight-notes-demo`](./demo-app) | "Keylight Notes" example app | Example (not published) |
@@ -347,10 +347,12 @@ Built with `KeylightConfig::builder(tenant_id, product_id, sdk_key)`:
 
 ## CLI & Demo
 
-### `keylight-cli` — a reference to build on, not a product to rebrand
+### `keylight-sdk-demo` — a reference to build on, not a product to rebrand
 
-`keylight-cli` is a **reference implementation**: a thin [clap](https://docs.rs/clap) wrapper
-around the SDK (see [`keylight-cli/src/main.rs`](./keylight-cli/src/main.rs)). Its main purpose is
+`keylight-sdk-demo` is a **reference implementation**: a thin [clap](https://docs.rs/clap) wrapper
+around the SDK (see [`keylight-sdk-demo/src/main.rs`](./keylight-sdk-demo/src/main.rs)). It installs as
+`keylight-demo`, deliberately not `keylight` — that name belongs to the
+[Keylight management CLI](https://github.com/keylight-dev/keylight-cli). Its main purpose is
 to be the worked example for **adding white-labeled licensing commands to your own CLI**.
 
 You don't ship this binary renamed — you embed the `keylight` *library* in **your** tool, bake in
@@ -371,7 +373,7 @@ You can also run the **generic** binary as-is — useful for **local development
 or exit-code gating in scripts/CI** (it is not a customer-facing tool):
 
 ```bash
-cargo install --git https://github.com/keylight-dev/keylight-rust keylight-cli
+cargo install --git https://github.com/keylight-dev/keylight-rust keylight-sdk-demo
 
 keylight --tenant your-tenant --product your-product --fetch-keys activate USER-LICENSE-KEY
 keylight --tenant your-tenant --product your-product validate || echo "license invalid"
