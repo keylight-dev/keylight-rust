@@ -108,14 +108,14 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
-      - run: cargo build -p keylight-cli --release
+      - run: cargo build -p keylight-sdk-demo --release
       # Rename to a target-suffixed name so the three platforms don't collide,
       # and upload only the executable (not the .d/.pdb build artifacts).
       - name: Stage binary
         shell: bash
         run: |
           mkdir -p dist
-          cp "target/release/keylight${{ matrix.ext }}" "dist/keylight-${{ matrix.target }}${{ matrix.ext }}"
+          cp "target/release/keylight-demo${{ matrix.ext }}" "dist/keylight-demo-${{ matrix.target }}${{ matrix.ext }}"
       - name: Extract changelog notes for this tag
         shell: bash
         run: |
@@ -124,5 +124,5 @@ jobs:
           if [ ! -s RELEASE_NOTES.md ]; then echo "warning: no CHANGELOG section for $ver" >&2; fi
       - uses: softprops/action-gh-release@v2
         with:
-          files: "dist/keylight-${{ matrix.target }}*"
+          files: "dist/keylight-demo-${{ matrix.target }}*"
           body_path: RELEASE_NOTES.md
