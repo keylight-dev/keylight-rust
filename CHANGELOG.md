@@ -5,7 +5,7 @@ All notable changes to the Keylight Rust SDK are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.3.4] - 2026-07-29
 
 ### Added
 
@@ -23,11 +23,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **Telemetry values are clamped to the server's limits.** `app_version` (which
-  the host app supplies) is truncated to 64 characters, `platform` to 32, before
-  being sent on activate / validate / keyless. An over-long value was rejected
-  by the API with a 400 for the *whole* request — so an unusually long app
-  version string could fail activation outright, not just lose the field. Parity
-  with the JS SDK.
+  the host app supplies) is truncated to 64, `platform` to 32, before being sent
+  on activate / validate / keyless. An over-long value was rejected by the API
+  with a 400 for the *whole* request — so an unusually long app version string
+  could fail activation outright, not just lose the field. Parity with the JS
+  SDK.
+
+  The limit is measured in UTF-16 code units, matching what the API actually
+  enforces. Counting `char`s instead would disagree for text outside the BMP —
+  64 emoji are 64 `char`s but 128 code units — so a value the SDK considered
+  clamped could still have been rejected.
 
 ## [0.3.3] - 2026-07-17
 
