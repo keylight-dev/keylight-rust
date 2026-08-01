@@ -1,5 +1,14 @@
 //! SDK/platform/app-version telemetry fields attached to API requests.
 
+/// Identifies this SDK to the backend, sent as `sdk`.
+///
+/// `platform` used to identify the SDK implicitly, because each SDK had its own
+/// vocabulary for it. That signal is gone: Rust, C++ and C# all send the same
+/// canonical `macos`/`windows`/`linux` tokens, so the server could not tell them
+/// apart and labelled all three "Rust". Saying which SDK this is explicitly is
+/// the fix.
+pub const SDK_ID: &str = "rust";
+
 /// SDK version baked at compile time.
 pub fn sdk_version() -> &'static str {
     env!("CARGO_PKG_VERSION")
@@ -24,6 +33,7 @@ pub fn platform() -> &'static str {
 // from the host app, so clamp before sending (parity with the JS SDK).
 const VERSION_MAX: usize = 64;
 const PLATFORM_MAX: usize = 32;
+const SDK_ID_MAX: usize = 16;
 
 /// Truncate to at most `max` UTF-16 code units, never splitting a character.
 ///
@@ -52,6 +62,7 @@ pub fn apply(map: &mut serde_json::Map<String, serde_json::Value>, app_version: 
         clamp(sdk_version(), VERSION_MAX).into(),
     );
     map.insert("platform".into(), clamp(platform(), PLATFORM_MAX).into());
+    map.insert("sdk".into(), clamp(SDK_ID, SDK_ID_MAX).into());
     if let Some(av) = app_version {
         map.insert("app_version".into(), clamp(av, VERSION_MAX).into());
     }
@@ -67,6 +78,7 @@ mod tests {
         apply(&mut m, Some("1.2.3"));
         assert_eq!(m["sdk_version"], serde_json::json!(sdk_version()));
         assert!(m.contains_key("platform"));
+        assert_eq!(m["sdk"], serde_json::json!("rust"));
         assert_eq!(m["app_version"], serde_json::json!("1.2.3"));
 
         let mut m2 = serde_json::Map::new();
@@ -132,6 +144,10 @@ mod tests {
     #[test]
     fn built_in_values_are_within_the_caps() {
         assert!(sdk_version().len() <= VERSION_MAX);
+        // The server maps this token to a display name; an unrecognised or
+        // truncated value falls back to the legacy heuristic, which cannot tell
+        // Rust from C++ or C#.
+        assert!(SDK_ID.len() <= SDK_ID_MAX);
         assert!(platform().len() <= PLATFORM_MAX);
     }
 }
