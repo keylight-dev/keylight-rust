@@ -5,6 +5,16 @@ All notable changes to the Keylight Rust SDK are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.5] - 2026-08-01
+
+### Added
+
+- **The SDK now identifies itself on the wire.** `activate` and `validate` send
+  `sdk: "rust"` alongside the existing `platform` field. `platform` reports the
+  operating system and nothing more, which made it identical across the Rust,
+  C++ and C# SDKs — it could not say which SDK a device was running. No API
+  change and nothing to do in your code.
+
 ## [0.3.4] - 2026-07-29
 
 ### Added
