@@ -125,6 +125,16 @@ impl Keylight {
         telemetry::apply(&mut map, self.config.app_version.as_deref());
         serde_json::Value::Object(map).to_string()
     }
+    /// Telemetry plus the device dimensions (`os_version`, `arch`) — for the
+    /// routes that describe a device (activate / validate / keyless).
+    /// Deactivate stays on `body_with_telemetry`: it only names an instance.
+    fn body_with_device_telemetry(
+        &self,
+        mut map: serde_json::Map<String, serde_json::Value>,
+    ) -> String {
+        telemetry::apply_device(&mut map);
+        self.body_with_telemetry(map)
+    }
 
     /// True hardware id with a persisted cache: a fresh OS read wins (and refreshes the
     /// cache); on a transient read failure the last successfully read id is reused so the
@@ -249,7 +259,7 @@ impl Keylight {
         if let Some(hash) = self.machine_hash() {
             map.insert("machine_hash".into(), hash.into());
         }
-        let body = self.body_with_telemetry(map);
+        let body = self.body_with_device_telemetry(map);
 
         let (_, text) = match self.post("activate", &body, &[]) {
             Ok(v) => v,
@@ -319,7 +329,7 @@ impl Keylight {
         if let Some(hash) = self.machine_hash() {
             map.insert("machine_hash".into(), hash.into());
         }
-        let body = self.body_with_telemetry(map);
+        let body = self.body_with_device_telemetry(map);
 
         let (_status, text) = match self.post("validate", &body, &[422]) {
             Ok(v) => v,
@@ -529,7 +539,7 @@ impl Keylight {
         if let Some(hash) = self.machine_hash() {
             map.insert("machine_hash".into(), hash.into());
         }
-        let body = self.body_with_telemetry(map);
+        let body = self.body_with_device_telemetry(map);
         // Route through the shared retry/backoff loop; with no decodable 4xx an
         // `Ok` here is exactly an HTTP 200, so the debounce state is persisted
         // only on success. Errors are swallowed (anonymous best-effort beacon).
