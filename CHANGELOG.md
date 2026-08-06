@@ -15,6 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the existing telemetry fields. Both are collected with platform APIs already
   in use — no new dependencies — and omitted when they can't be read cleanly.
   No API change and nothing to do in your code.
+- **Coarse hardware shape on the same requests.** `cpu_cores` and `memory` are
+  reported as ranges (`5-8`, `16-32GB`), never as exact values — the precise
+  core count and RAM size never leave the machine. Read via
+  `std::thread::available_parallelism` and a per-OS memory query, with no new
+  dependencies, and omitted when a platform can't be read cleanly.
 
 ## [0.3.5] - 2026-08-01
 

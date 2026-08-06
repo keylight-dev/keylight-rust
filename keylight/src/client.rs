@@ -125,7 +125,8 @@ impl Keylight {
         telemetry::apply(&mut map, self.config.app_version.as_deref());
         serde_json::Value::Object(map).to_string()
     }
-    /// Telemetry plus the device dimensions (`os_version`, `arch`) — for the
+    /// Telemetry plus the device dimensions (`os_version`, `arch`,
+    /// `cpu_cores`, `memory`) — for the
     /// routes that describe a device (activate / validate / keyless).
     /// Deactivate stays on `body_with_telemetry`: it only names an instance.
     fn body_with_device_telemetry(

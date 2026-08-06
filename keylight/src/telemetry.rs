@@ -111,6 +111,70 @@ fn dotted_numeric(raw: &str) -> Option<String> {
     well_formed.then(|| v.to_string())
 }
 
+// Coarse hardware shape (`cpu_cores`, `memory`). Only BUCKETS cross the wire:
+// a developer proxying their own app must never see a licensing SDK reporting
+// the exact core count or RAM size — that reads as fingerprinting. The bucket
+// strings below are a contract shared verbatim by the worker and all five
+// SDKs; changing a boundary here splits one machine population across two
+// buckets server-side.
+
+/// One GiB in bytes. Memory is compared against the raw byte count at this
+/// scale — physical RAM rarely lands exactly on a power of two, and
+/// pre-rounding would push a machine reporting a shade under 8GiB into the
+/// wrong bucket.
+const GIB: u64 = 1024 * 1024 * 1024;
+
+/// Bucket a core count. Both endpoints are INCLUSIVE: 4 → "3-4", 5 → "5-8".
+fn cpu_cores_bucket(n: usize) -> &'static str {
+    match n {
+        0..=2 => "1-2",
+        3..=4 => "3-4",
+        5..=8 => "5-8",
+        9..=16 => "9-16",
+        _ => "17+",
+    }
+}
+
+/// Bucket a physical-memory byte count. Upper bounds are EXCLUSIVE:
+/// "4-8GB" means 4GiB <= x < 8GiB, so exactly 8GiB is "8-16GB".
+fn memory_bucket(bytes: u64) -> &'static str {
+    match bytes {
+        b if b < 4 * GIB => "<4GB",
+        b if b < 8 * GIB => "4-8GB",
+        b if b < 16 * GIB => "8-16GB",
+        b if b < 32 * GIB => "16-32GB",
+        b if b < 64 * GIB => "32-64GB",
+        _ => "64GB+",
+    }
+}
+
+/// This machine's core-count bucket, computed once per process.
+///
+/// `available_parallelism` is the std answer and needs no dependency; it
+/// returns an error on targets that cannot report a count, and then the field
+/// is omitted rather than guessed.
+pub(crate) fn cpu_cores() -> Option<&'static str> {
+    use std::sync::OnceLock;
+    static CACHE: OnceLock<Option<&'static str>> = OnceLock::new();
+    *CACHE.get_or_init(|| {
+        std::thread::available_parallelism()
+            .ok()
+            .map(|n| cpu_cores_bucket(n.get()))
+    })
+}
+
+/// This machine's memory bucket, computed once per process. `None` when the
+/// platform read fails or yields zero — send nothing rather than guess.
+pub(crate) fn memory() -> Option<&'static str> {
+    use std::sync::OnceLock;
+    static CACHE: OnceLock<Option<&'static str>> = OnceLock::new();
+    *CACHE.get_or_init(|| {
+        read_total_memory_bytes()
+            .filter(|&b| b > 0)
+            .map(memory_bucket)
+    })
+}
+
 // Per-OS raw reads, in the same style as `store::device::read_machine_id` —
 // zero new dependencies, `None` on any failure.
 #[cfg(target_os = "macos")]
@@ -145,6 +209,63 @@ fn read_os_version_raw() -> Option<String> {
     None
 }
 
+// Physical-memory reads, same shape as the OS-version ones: no dependency, no
+// FFI, `None` on any failure. Only the bucket derived from these bytes is ever
+// sent — the byte count itself never leaves the process.
+#[cfg(target_os = "macos")]
+fn read_total_memory_bytes() -> Option<u64> {
+    let out = std::process::Command::new("sysctl")
+        .args(["-n", "hw.memsize"])
+        .output()
+        .ok()?;
+    String::from_utf8_lossy(&out.stdout).trim().parse().ok()
+}
+#[cfg(target_os = "linux")]
+fn read_total_memory_bytes() -> Option<u64> {
+    // "MemTotal:       16316360 kB" — the unit is always kB (kibibytes) per
+    // the kernel's fs/proc/meminfo.c, regardless of the machine.
+    let meminfo = std::fs::read_to_string("/proc/meminfo").ok()?;
+    let line = meminfo.lines().find(|l| l.starts_with("MemTotal:"))?;
+    let kib: u64 = line.split_whitespace().nth(1)?.parse().ok()?;
+    kib.checked_mul(1024)
+}
+#[cfg(target_os = "windows")]
+fn read_total_memory_bytes() -> Option<u64> {
+    // wmic first (present on older Windows, cheapest), then the CIM query it
+    // was replaced by. Both print the byte count in prose, so pull the first
+    // digit run out rather than parsing a fixed column.
+    fn first_number(s: &str) -> Option<u64> {
+        let start = s.bytes().position(|b| b.is_ascii_digit())?;
+        let run = &s[start..];
+        let end = run
+            .bytes()
+            .position(|b| !b.is_ascii_digit())
+            .unwrap_or(run.len());
+        run[..end].parse().ok()
+    }
+    let wmic = std::process::Command::new("wmic")
+        .args(["ComputerSystem", "get", "TotalPhysicalMemory"])
+        .output()
+        .ok()
+        .and_then(|o| first_number(&String::from_utf8_lossy(&o.stdout)));
+    if wmic.is_some() {
+        return wmic;
+    }
+    let out = std::process::Command::new("powershell")
+        .args([
+            "-NoProfile",
+            "-Command",
+            "(Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory",
+        ])
+        .output()
+        .ok()?;
+    first_number(&String::from_utf8_lossy(&out.stdout))
+}
+#[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+fn read_total_memory_bytes() -> Option<u64> {
+    None
+}
+
 /// Inject telemetry fields into a request body map, clamped to the server caps.
 pub fn apply(map: &mut serde_json::Map<String, serde_json::Value>, app_version: Option<&str>) {
     map.insert(
@@ -158,7 +279,8 @@ pub fn apply(map: &mut serde_json::Map<String, serde_json::Value>, app_version: 
     }
 }
 
-/// Inject the Phase-3 device dimensions (`os_version`, `arch`) — activate /
+/// Inject the Phase-3 device dimensions (`os_version`, `arch`, `cpu_cores`,
+/// `memory`) — activate /
 /// validate / keyless only; deactivate identifies a device, it doesn't
 /// describe one. `device_class` is NEVER sent from this SDK: the server only
 /// honors it from iOS SDKs and derives desktop classes from the OS token
@@ -170,6 +292,12 @@ pub fn apply_device(map: &mut serde_json::Map<String, serde_json::Value>) {
     }
     if let Some(a) = arch() {
         map.insert("arch".into(), a.into());
+    }
+    if let Some(c) = cpu_cores() {
+        map.insert("cpu_cores".into(), c.into());
+    }
+    if let Some(m) = memory() {
+        map.insert("memory".into(), m.into());
     }
 }
 
@@ -286,6 +414,95 @@ mod tests {
         assert_eq!(m.contains_key("os_version"), os_version().is_some());
         assert_eq!(m.contains_key("arch"), arch().is_some());
         assert!(!m.contains_key("device_class"));
+    }
+
+    /// Core-count buckets are a cross-SDK contract: both endpoints are
+    /// INCLUSIVE, so 4 cores is "3-4" and 5 cores is "5-8". A boundary that
+    /// disagrees with another SDK splits one machine population in two.
+    #[test]
+    fn cpu_cores_bucket_boundaries() {
+        assert_eq!(cpu_cores_bucket(1), "1-2");
+        assert_eq!(cpu_cores_bucket(2), "1-2");
+        assert_eq!(cpu_cores_bucket(3), "3-4");
+        assert_eq!(cpu_cores_bucket(4), "3-4");
+        assert_eq!(cpu_cores_bucket(5), "5-8");
+        assert_eq!(cpu_cores_bucket(8), "5-8");
+        assert_eq!(cpu_cores_bucket(9), "9-16");
+        assert_eq!(cpu_cores_bucket(16), "9-16");
+        assert_eq!(cpu_cores_bucket(17), "17+");
+        assert_eq!(cpu_cores_bucket(128), "17+");
+    }
+
+    /// Memory buckets are half-open on the raw byte count: "4-8GB" means
+    /// 4GiB <= x < 8GiB, so exactly 8GiB lands in "8-16GB". Real machines
+    /// report a shade under the round number, which is why the comparison is
+    /// against raw bytes with GiB = 1024^3 and nothing is pre-rounded.
+    #[test]
+    fn memory_bucket_boundaries() {
+        const GIB: u64 = 1024 * 1024 * 1024;
+        assert_eq!(memory_bucket(39 * GIB / 10), "<4GB"); // 3.9GB
+        assert_eq!(memory_bucket(4 * GIB), "4-8GB");
+        assert_eq!(memory_bucket(79 * GIB / 10), "4-8GB"); // 7.9GB
+        assert_eq!(memory_bucket(8 * GIB), "8-16GB");
+        assert_eq!(memory_bucket(16 * GIB), "16-32GB");
+        assert_eq!(memory_bucket(32 * GIB), "32-64GB");
+        assert_eq!(memory_bucket(64 * GIB), "64GB+");
+        assert_eq!(memory_bucket(128 * GIB), "64GB+");
+    }
+
+    /// A machine reporting slightly under the round number must not be pushed
+    /// up a bucket by rounding: 8GB of RAM minus a byte is still "4-8GB".
+    #[test]
+    fn memory_bucket_does_not_pre_round() {
+        const GIB: u64 = 1024 * 1024 * 1024;
+        assert_eq!(memory_bucket(8 * GIB - 1), "4-8GB");
+        assert_eq!(memory_bucket(16 * GIB - 1), "8-16GB");
+        assert_eq!(memory_bucket(0), "<4GB");
+    }
+
+    /// This machine's values must be inside the two closed vocabularies —
+    /// the server buckets on the exact strings.
+    #[test]
+    fn device_bucket_values_match_the_server_vocabulary() {
+        const CORES: [&str; 5] = ["1-2", "3-4", "5-8", "9-16", "17+"];
+        const MEM: [&str; 6] = ["<4GB", "4-8GB", "8-16GB", "16-32GB", "32-64GB", "64GB+"];
+        if let Some(c) = cpu_cores() {
+            assert!(CORES.contains(&c), "unexpected cpu_cores bucket {c:?}");
+        }
+        if let Some(m) = memory() {
+            assert!(MEM.contains(&m), "unexpected memory bucket {m:?}");
+        }
+    }
+
+    /// apply_device carries the buckets on the same payload as os_version /
+    /// arch, and omits either one whose platform read failed.
+    #[test]
+    fn apply_device_sets_cpu_cores_and_memory_when_readable() {
+        let mut m = serde_json::Map::new();
+        apply_device(&mut m);
+        assert_eq!(m.contains_key("cpu_cores"), cpu_cores().is_some());
+        assert_eq!(m.contains_key("memory"), memory().is_some());
+        // available_parallelism works on every supported desktop target.
+        #[cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))]
+        {
+            assert!(m.contains_key("cpu_cores"));
+            assert!(m.contains_key("memory"));
+        }
+    }
+
+    /// The precise core count and RAM size must never cross the wire — a
+    /// licensing SDK reporting exact hardware specs reads as fingerprinting.
+    #[test]
+    fn apply_device_never_sends_raw_hardware_values() {
+        let mut m = serde_json::Map::new();
+        apply_device(&mut m);
+        for k in ["cpu_cores", "memory"] {
+            if let Some(v) = m.get(k) {
+                assert!(v.is_string(), "{k} must be a bucket string, not a number");
+            }
+        }
+        assert!(!m.contains_key("cpu_core_count"));
+        assert!(!m.contains_key("memory_bytes"));
     }
 
     /// The compile-time values are already well inside the caps — a regression

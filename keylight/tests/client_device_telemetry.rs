@@ -1,5 +1,6 @@
-//! Phase-3 device telemetry: `os_version` and `arch` ride the activate /
-//! validate / keyless bodies. `device_class` is NEVER sent — the server only
+//! Phase-3 device telemetry: `os_version`, `arch`, `cpu_cores` and `memory`
+//! ride the activate / validate / keyless bodies. `cpu_cores` and `memory` are
+//! coarse BUCKETS — the exact core count and RAM size never cross the wire. `device_class` is NEVER sent — the server only
 //! honors it from iOS SDKs and derives desktop classes from the OS token.
 //! Deactivate carries nothing new.
 use keylight::http::{HttpResponse, Transport, TransportOutcome};
@@ -99,6 +100,29 @@ fn assert_device_fields(body: &serde_json::Value, route: &str) {
         body.get("device_class").is_none(),
         "{route}: device_class must never be sent by this SDK"
     );
+    // cpu_cores / memory: bucket strings from the closed cross-SDK
+    // vocabularies, never the raw count or byte size.
+    const CORES: [&str; 5] = ["1-2", "3-4", "5-8", "9-16", "17+"];
+    const MEM: [&str; 6] = ["<4GB", "4-8GB", "8-16GB", "16-32GB", "32-64GB", "64GB+"];
+    if let Some(v) = body.get("cpu_cores") {
+        let s = v.as_str().expect("cpu_cores must be a bucket string");
+        assert!(CORES.contains(&s), "{route}: bad cpu_cores bucket {s:?}");
+    }
+    if let Some(v) = body.get("memory") {
+        let s = v.as_str().expect("memory must be a bucket string");
+        assert!(MEM.contains(&s), "{route}: bad memory bucket {s:?}");
+    }
+    #[cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))]
+    {
+        assert!(
+            body.get("cpu_cores").is_some(),
+            "{route}: cpu_cores should be readable on this OS"
+        );
+        assert!(
+            body.get("memory").is_some(),
+            "{route}: memory should be readable on this OS"
+        );
+    }
 }
 
 #[test]
@@ -134,6 +158,14 @@ fn activate_validate_and_keyless_carry_device_fields_but_deactivate_does_not() {
     assert!(
         deactivate.get("arch").is_none(),
         "deactivate must not send arch"
+    );
+    assert!(
+        deactivate.get("cpu_cores").is_none(),
+        "deactivate must not send cpu_cores"
+    );
+    assert!(
+        deactivate.get("memory").is_none(),
+        "deactivate must not send memory"
     );
     assert!(deactivate.get("device_class").is_none());
 }
