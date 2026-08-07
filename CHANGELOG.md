@@ -5,6 +5,22 @@ All notable changes to the Keylight Rust SDK are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **New optional device fields on activate / validate / keyless.** The SDK now
+  reports the device's OS version (dotted-numeric, e.g. `15.5` on macOS, the
+  kernel release on Linux) and CPU architecture (`arm64` / `x86_64`) alongside
+  the existing telemetry fields. Both are collected with platform APIs already
+  in use — no new dependencies — and omitted when they can't be read cleanly.
+  No API change and nothing to do in your code.
+- **Coarse hardware shape on the same requests.** `cpu_cores` and `memory` are
+  reported as ranges (`5-8`, `16-32GB`), never as exact values — the precise
+  core count and RAM size never leave the machine. Read via
+  `std::thread::available_parallelism` and a per-OS memory query, with no new
+  dependencies, and omitted when a platform can't be read cleanly.
+
 ## [0.3.5] - 2026-08-01
 
 ### Added
