@@ -125,27 +125,36 @@ fn dotted_numeric(raw: &str) -> Option<String> {
 const GIB: u64 = 1024 * 1024 * 1024;
 
 /// Bucket a core count. Both endpoints are INCLUSIVE: 4 → "3-4", 5 → "5-8".
-fn cpu_cores_bucket(n: usize) -> &'static str {
-    match n {
-        0..=2 => "1-2",
+///
+/// `None` for an unknown count (0) — every other SDK omits the field there
+/// rather than filing the machine under "1-2", and a bucketer that disagrees
+/// on any input is how one machine population ends up split across two rows.
+fn cpu_cores_bucket(n: usize) -> Option<&'static str> {
+    Some(match n {
+        0 => return None,
+        1..=2 => "1-2",
         3..=4 => "3-4",
         5..=8 => "5-8",
         9..=16 => "9-16",
         _ => "17+",
-    }
+    })
 }
 
 /// Bucket a physical-memory byte count. Upper bounds are EXCLUSIVE:
 /// "4-8GB" means 4GiB <= x < 8GiB, so exactly 8GiB is "8-16GB".
-fn memory_bucket(bytes: u64) -> &'static str {
-    match bytes {
+///
+/// `None` for 0 (the read failed) — reporting "<4GB" for an unreadable probe
+/// would misfile the device, and the other four SDKs omit the field instead.
+fn memory_bucket(bytes: u64) -> Option<&'static str> {
+    Some(match bytes {
+        0 => return None,
         b if b < 4 * GIB => "<4GB",
         b if b < 8 * GIB => "4-8GB",
         b if b < 16 * GIB => "8-16GB",
         b if b < 32 * GIB => "16-32GB",
         b if b < 64 * GIB => "32-64GB",
         _ => "64GB+",
-    }
+    })
 }
 
 /// This machine's core-count bucket, computed once per process.
@@ -159,7 +168,7 @@ pub(crate) fn cpu_cores() -> Option<&'static str> {
     *CACHE.get_or_init(|| {
         std::thread::available_parallelism()
             .ok()
-            .map(|n| cpu_cores_bucket(n.get()))
+            .and_then(|n| cpu_cores_bucket(n.get()))
     })
 }
 
@@ -168,11 +177,7 @@ pub(crate) fn cpu_cores() -> Option<&'static str> {
 pub(crate) fn memory() -> Option<&'static str> {
     use std::sync::OnceLock;
     static CACHE: OnceLock<Option<&'static str>> = OnceLock::new();
-    *CACHE.get_or_init(|| {
-        read_total_memory_bytes()
-            .filter(|&b| b > 0)
-            .map(memory_bucket)
-    })
+    *CACHE.get_or_init(|| read_total_memory_bytes().and_then(memory_bucket))
 }
 
 // Per-OS raw reads, in the same style as `store::device::read_machine_id` —
@@ -421,16 +426,16 @@ mod tests {
     /// disagrees with another SDK splits one machine population in two.
     #[test]
     fn cpu_cores_bucket_boundaries() {
-        assert_eq!(cpu_cores_bucket(1), "1-2");
-        assert_eq!(cpu_cores_bucket(2), "1-2");
-        assert_eq!(cpu_cores_bucket(3), "3-4");
-        assert_eq!(cpu_cores_bucket(4), "3-4");
-        assert_eq!(cpu_cores_bucket(5), "5-8");
-        assert_eq!(cpu_cores_bucket(8), "5-8");
-        assert_eq!(cpu_cores_bucket(9), "9-16");
-        assert_eq!(cpu_cores_bucket(16), "9-16");
-        assert_eq!(cpu_cores_bucket(17), "17+");
-        assert_eq!(cpu_cores_bucket(128), "17+");
+        assert_eq!(cpu_cores_bucket(1), Some("1-2"));
+        assert_eq!(cpu_cores_bucket(2), Some("1-2"));
+        assert_eq!(cpu_cores_bucket(3), Some("3-4"));
+        assert_eq!(cpu_cores_bucket(4), Some("3-4"));
+        assert_eq!(cpu_cores_bucket(5), Some("5-8"));
+        assert_eq!(cpu_cores_bucket(8), Some("5-8"));
+        assert_eq!(cpu_cores_bucket(9), Some("9-16"));
+        assert_eq!(cpu_cores_bucket(16), Some("9-16"));
+        assert_eq!(cpu_cores_bucket(17), Some("17+"));
+        assert_eq!(cpu_cores_bucket(128), Some("17+"));
     }
 
     /// Memory buckets are half-open on the raw byte count: "4-8GB" means
@@ -440,14 +445,14 @@ mod tests {
     #[test]
     fn memory_bucket_boundaries() {
         const GIB: u64 = 1024 * 1024 * 1024;
-        assert_eq!(memory_bucket(39 * GIB / 10), "<4GB"); // 3.9GB
-        assert_eq!(memory_bucket(4 * GIB), "4-8GB");
-        assert_eq!(memory_bucket(79 * GIB / 10), "4-8GB"); // 7.9GB
-        assert_eq!(memory_bucket(8 * GIB), "8-16GB");
-        assert_eq!(memory_bucket(16 * GIB), "16-32GB");
-        assert_eq!(memory_bucket(32 * GIB), "32-64GB");
-        assert_eq!(memory_bucket(64 * GIB), "64GB+");
-        assert_eq!(memory_bucket(128 * GIB), "64GB+");
+        assert_eq!(memory_bucket(39 * GIB / 10), Some("<4GB")); // 3.9GB
+        assert_eq!(memory_bucket(4 * GIB), Some("4-8GB"));
+        assert_eq!(memory_bucket(79 * GIB / 10), Some("4-8GB")); // 7.9GB
+        assert_eq!(memory_bucket(8 * GIB), Some("8-16GB"));
+        assert_eq!(memory_bucket(16 * GIB), Some("16-32GB"));
+        assert_eq!(memory_bucket(32 * GIB), Some("32-64GB"));
+        assert_eq!(memory_bucket(64 * GIB), Some("64GB+"));
+        assert_eq!(memory_bucket(128 * GIB), Some("64GB+"));
     }
 
     /// A machine reporting slightly under the round number must not be pushed
@@ -455,9 +460,12 @@ mod tests {
     #[test]
     fn memory_bucket_does_not_pre_round() {
         const GIB: u64 = 1024 * 1024 * 1024;
-        assert_eq!(memory_bucket(8 * GIB - 1), "4-8GB");
-        assert_eq!(memory_bucket(16 * GIB - 1), "8-16GB");
-        assert_eq!(memory_bucket(0), "<4GB");
+        assert_eq!(memory_bucket(8 * GIB - 1), Some("4-8GB"));
+        assert_eq!(memory_bucket(16 * GIB - 1), Some("8-16GB"));
+        // 0 means the platform read failed: omit the field, never file the device
+        // under "<4GB". All five SDKs agree on this.
+        assert_eq!(memory_bucket(0), None);
+        assert_eq!(cpu_cores_bucket(0), None);
     }
 
     /// This machine's values must be inside the two closed vocabularies —
