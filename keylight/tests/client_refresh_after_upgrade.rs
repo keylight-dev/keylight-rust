@@ -44,10 +44,18 @@ fn signing_key() -> SigningKey {
 
 /// Signed `v3` lease JSON (camelCase wire shape) with the given status/expiry
 /// and entitlement set.
-fn lease_json(signing: &SigningKey, status: &str, expires_at: i64, entitlements: &[&str]) -> String {
+fn lease_json(
+    signing: &SigningKey,
+    status: &str,
+    expires_at: i64,
+    entitlements: &[&str],
+) -> String {
     let mut ents: Vec<&str> = entitlements.to_vec();
     ents.sort_unstable();
-    let payload = format!("v3|{KID}|hash|i1|0|{expires_at}|{status}|{}", ents.join(","));
+    let payload = format!(
+        "v3|{KID}|hash|i1|0|{expires_at}|{status}|{}",
+        ents.join(",")
+    );
     let sig = signing.sign(payload.as_bytes());
     let sig_b64 = base64::engine::general_purpose::STANDARD.encode(sig.to_bytes());
     serde_json::json!({
@@ -74,7 +82,11 @@ fn empty_store(dir: &str) -> Arc<EncryptedFileStore> {
 
 /// A store holding a signature-valid, currently-active lease with the given
 /// entitlements, validated online just now.
-fn store_with_active_lease(dir: &str, signing: &SigningKey, entitlements: &[&str]) -> Arc<EncryptedFileStore> {
+fn store_with_active_lease(
+    dir: &str,
+    signing: &SigningKey,
+    entitlements: &[&str],
+) -> Arc<EncryptedFileStore> {
     let store = empty_store(dir);
     store.set_string(account::LICENSE_KEY, "PRO-KEY").unwrap();
     store.set_string(account::INSTANCE_ID, "i1").unwrap();
@@ -176,14 +188,24 @@ fn entitlements_change_on_first_validate_returns_true() {
     let signing = signing_key();
     let store = store_with_active_lease("kl-rau-first-change", &signing, &["pro"]);
     let lease = lease_json(&signing, "active", now() + 100_000, &["pro", "enterprise"]);
-    let body = format!(r#"{{"valid":true,"lease":{lease},"license_expires_at":{}}}"#, now() + 100_000);
+    let body = format!(
+        r#"{{"valid":true,"lease":{lease},"license_expires_at":{}}}"#,
+        now() + 100_000
+    );
     let transport = Counting::new(200, &body);
     let kl = Keylight::with_parts(config_trusting(&signing), store, transport.clone());
 
     let result = kl.refresh_after_upgrade(Duration::from_millis(250), Duration::from_millis(10));
 
-    assert!(result, "new entitlements on the first poll must return true");
-    assert_eq!(transport.count(), 1, "must stop polling as soon as a change lands");
+    assert!(
+        result,
+        "new entitlements on the first poll must return true"
+    );
+    assert_eq!(
+        transport.count(),
+        1,
+        "must stop polling as soon as a change lands"
+    );
 }
 
 /// (2) No stored license → `false`, and it must not touch the network at all.
@@ -197,7 +219,11 @@ fn no_stored_license_returns_false_with_no_network_call() {
     let result = kl.refresh_after_upgrade(Duration::from_millis(250), Duration::from_millis(10));
 
     assert!(!result, "no stored license must return false");
-    assert_eq!(transport.count(), 0, "no stored license must not hit the network");
+    assert_eq!(
+        transport.count(),
+        0,
+        "no stored license must not hit the network"
+    );
 }
 
 /// (5) The webhook never lands: every validate echoes the same entitlements
@@ -208,7 +234,10 @@ fn webhook_never_lands_times_out_after_polling_more_than_once() {
     let signing = signing_key();
     let store = store_with_active_lease("kl-rau-timeout", &signing, &["pro"]);
     let lease = lease_json(&signing, "active", now() + 100_000, &["pro"]);
-    let body = format!(r#"{{"valid":true,"lease":{lease},"license_expires_at":{}}}"#, now() + 100_000);
+    let body = format!(
+        r#"{{"valid":true,"lease":{lease},"license_expires_at":{}}}"#,
+        now() + 100_000
+    );
     let transport = Counting::new(200, &body);
     let kl = Keylight::with_parts(config_trusting(&signing), store, transport.clone());
 
@@ -246,7 +275,10 @@ fn definitive_rejection_mid_poll_returns_true_and_downgrades_state() {
 
     let result = kl.refresh_after_upgrade(Duration::from_millis(250), Duration::from_millis(10));
 
-    assert!(result, "a mid-poll rejection is a state change and must return true");
+    assert!(
+        result,
+        "a mid-poll rejection is a state change and must return true"
+    );
     assert_ne!(
         kl.state(),
         LicenseState::Licensed,
