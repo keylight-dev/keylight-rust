@@ -908,6 +908,64 @@ impl Keylight {
     /// route's `[A-Za-z0-9_-]` charset, so there is nothing left to
     /// percent-encode. The product is not in the URL: the license itself carries
     /// its product server-side.
+
+    /// Poll-revalidate briefly after a customer completes an upgrade, so the new
+    /// entitlements (or a mid-flight rejection) show up in the running app without
+    /// waiting for the normal refresh cadence (parity with Swift's
+    /// `LicenseManager.refreshAfterUpgrade(timeout:pollInterval:)`). This exists to
+    /// cover payment-webhook lag: checkout can complete in the browser slightly
+    /// before the provider's webhook reaches Keylight and the seat's lease actually
+    /// changes server-side.
+    ///
+    /// Re-validates against the server every `poll_interval` (clamped to a 100ms
+    /// floor) until `timeout` elapses. Returns `true` as soon as a call to
+    /// [`Self::validate`] succeeds and either the entitlement *set* (order-independent)
+    /// or the resolved [`Self::state`] differs from what it was when this method was
+    /// called — including a definitive rejection landing mid-poll, since that always
+    /// changes `state()`. Returns `false` on timeout or immediately, with no network
+    /// call at all, when no license is stored. A transient/network error from
+    /// `validate()` is not treated as a change (mirrors [`Self::active_revalidate`]);
+    /// polling simply continues.
+    ///
+    /// **Blocking.** This sleeps between attempts and can take up to `timeout` to
+    /// return — call it from a background thread (`std::thread::spawn`), never from
+    /// a UI/main thread.
+    ///
+    /// A seat-only upgrade whose entitlement set and state end up identical to
+    /// before (e.g. a device-cap bump with no feature/tier change) is invisible to
+    /// this method: it will run to `timeout` and return `false`. The caller's normal
+    /// refresh cadence ([`Self::refresh_if_needed`] / [`Self::check_on_launch`])
+    /// still picks that change up on its own schedule.
+    pub fn refresh_after_upgrade(&self, timeout: Duration, poll_interval: Duration) -> bool {
+        if !self.has_stored_license() {
+            return false;
+        }
+        let before_entitlements = Self::sorted_entitlements(self.cached_lease());
+        let before_state = self.state();
+        let poll = poll_interval.max(Duration::from_millis(100));
+        let deadline = Instant::now() + timeout;
+        loop {
+            if self.validate().is_ok() {
+                let now_entitlements = Self::sorted_entitlements(self.cached_lease());
+                if now_entitlements != before_entitlements || self.state() != before_state {
+                    return true;
+                }
+            }
+            if Instant::now() >= deadline {
+                return false;
+            }
+            std::thread::sleep(poll);
+        }
+    }
+    /// Sorted entitlement list from an optional lease (empty when there is none),
+    /// so callers can compare entitlement *sets* order-independently.
+    fn sorted_entitlements(lease: Option<Lease>) -> Vec<String> {
+        let mut ents = lease.map(|l| l.entitlements).unwrap_or_default();
+        ents.sort_unstable();
+        ents
+    }
+
+    /// Hosted upgrade URL pre-filled with the cached key (parity with Swift upgradeURL).
     pub fn upgrade_url(&self) -> Option<String> {
         let key = self.cached_license_key()?;
         Some(format!(
