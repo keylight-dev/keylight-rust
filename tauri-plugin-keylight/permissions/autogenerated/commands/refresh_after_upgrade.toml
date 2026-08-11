@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-refresh-after-upgrade"
+description = "Enables the refresh_after_upgrade command without any pre-configured scope."
+commands.allow = ["refresh_after_upgrade"]
+
+[[permission]]
+identifier = "deny-refresh-after-upgrade"
+description = "Denies the refresh_after_upgrade command without any pre-configured scope."
+commands.deny = ["refresh_after_upgrade"]

@@ -49,6 +49,50 @@ fn refresh_if_needed(state: State<'_, KeylightState>) -> Result<Option<bool>, St
         .map_err(|e| e.to_string())
 }
 
+/// Force a re-validation on active use (app foreground, window focus). Debounced
+/// to 60s in the SDK. Wire this to a foreground/focus hook (see README) so a
+/// dashboard revoke lands within minutes instead of waiting for the normal
+/// refresh cadence or a relaunch.
+///
+/// Returns `true`/`false` when a validation ran, `null` when suppressed by the
+/// debounce window, no license is stored, or the call was transient (network
+/// error) and state was left untouched.
+#[tauri::command]
+fn active_revalidate(state: State<'_, KeylightState>) -> Option<bool> {
+    state.0.active_revalidate().map(|r| r.valid)
+}
+
+/// Briefly poll-revalidate after a customer completes an upgrade, so new
+/// entitlements (or a mid-flight rejection) show up in the running app without
+/// waiting for the normal refresh cadence. Re-validates every
+/// `poll_interval_secs` (default 2.0, clamped to a 100ms floor in the SDK)
+/// until `timeout_secs` (default 30.0) elapses or a change is observed.
+///
+/// **Blocking.** Tauri dispatches synchronous commands off the main thread, so
+/// this is safe to call directly from the frontend, but it can take up to
+/// `timeout_secs` to resolve.
+///
+/// Returns `true` as soon as a change is detected, `false` on timeout or when
+/// no license is stored. Errors only on invalid (negative/NaN/infinite)
+/// duration input.
+#[tauri::command]
+fn refresh_after_upgrade(
+    state: State<'_, KeylightState>,
+    timeout_secs: Option<f64>,
+    poll_interval_secs: Option<f64>,
+) -> Result<bool, String> {
+    let timeout = secs_to_duration(timeout_secs.unwrap_or(30.0))?;
+    let poll_interval = secs_to_duration(poll_interval_secs.unwrap_or(2.0))?;
+    Ok(state.0.refresh_after_upgrade(timeout, poll_interval))
+}
+
+fn secs_to_duration(secs: f64) -> Result<Duration, String> {
+    if !secs.is_finite() || secs < 0.0 {
+        return Err(format!("invalid duration: {secs} seconds"));
+    }
+    Ok(Duration::from_secs_f64(secs))
+}
+
 /// Send the anonymous keyless beacon. `keylessState` is the wire value:
 /// `"trial"`, `"free_tier"`, or `"expired"`.
 #[tauri::command]
@@ -124,6 +168,8 @@ pub fn init_with_heartbeat<R: Runtime>(
             has_entitlement,
             check_on_launch,
             refresh_if_needed,
+            active_revalidate,
+            refresh_after_upgrade,
             report_keyless_state
         ])
         .setup(move |app, _api| {
@@ -183,5 +229,18 @@ mod tests {
             "re-validating a license is a network call the host app still owns"
         );
         assert_eq!(o.interval, Duration::from_secs(21600));
+    }
+
+    #[test]
+    fn secs_to_duration_converts_finite_nonnegative() {
+        assert_eq!(secs_to_duration(30.0), Ok(Duration::from_secs_f64(30.0)));
+        assert_eq!(secs_to_duration(0.0), Ok(Duration::ZERO));
+    }
+
+    #[test]
+    fn secs_to_duration_rejects_negative_nan_infinite() {
+        assert!(secs_to_duration(-1.0).is_err());
+        assert!(secs_to_duration(f64::NAN).is_err());
+        assert!(secs_to_duration(f64::INFINITY).is_err());
     }
 }

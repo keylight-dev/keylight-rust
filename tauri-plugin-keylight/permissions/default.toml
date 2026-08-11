@@ -8,5 +8,7 @@ permissions = [
     "allow-has-entitlement",
     "allow-check-on-launch",
     "allow-refresh-if-needed",
+    "allow-active-revalidate",
+    "allow-refresh-after-upgrade",
     "allow-report-keyless-state",
 ]

@@ -50,6 +50,44 @@ export async function refreshIfNeeded(): Promise<boolean | null> {
 }
 
 /**
+ * Force a re-validation on active use (app foreground, window focus).
+ * Debounced to 60s on the Rust side. Wire this to your window's focus event
+ * (see README) so a dashboard revoke lands within minutes instead of waiting
+ * for the normal refresh cadence or a relaunch.
+ *
+ * @returns `true`/`false` when a validation ran, `null` when suppressed by
+ * the debounce window, no license is stored, or the call was transient.
+ */
+export async function activeRevalidate(): Promise<boolean | null> {
+  return await invoke<boolean | null>('plugin:keylight|active_revalidate');
+}
+
+/**
+ * Briefly poll-revalidate after a customer completes an upgrade, so new
+ * entitlements (or a mid-flight rejection) show up in the running app without
+ * waiting for the normal refresh cadence. Re-validates every
+ * `pollIntervalSecs` until `timeoutSecs` elapses or a change is observed.
+ *
+ * This call blocks on the Rust side for up to `timeoutSecs`; await it from
+ * the frontend rather than calling it from a hot path.
+ *
+ * @param timeoutSecs - Total time to keep polling. Default `30`.
+ * @param pollIntervalSecs - Delay between polls (clamped to a 100ms floor
+ * on the Rust side). Default `2`.
+ * @returns `true` as soon as a change is detected, `false` on timeout or when
+ * no license is stored.
+ */
+export async function refreshAfterUpgrade(
+  timeoutSecs?: number,
+  pollIntervalSecs?: number
+): Promise<boolean> {
+  return await invoke<boolean>('plugin:keylight|refresh_after_upgrade', {
+    timeoutSecs,
+    pollIntervalSecs,
+  });
+}
+
+/**
  * Send the anonymous keyless beacon (debounced 24h on the Rust side).
  *
  * @param keylessState - `"trial"`, `"free_tier"`, or `"expired"`.
