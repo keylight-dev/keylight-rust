@@ -87,10 +87,9 @@ fn refresh_after_upgrade(
 }
 
 fn secs_to_duration(secs: f64) -> Result<Duration, String> {
-    if !secs.is_finite() || secs < 0.0 {
-        return Err(format!("invalid duration: {secs} seconds"));
-    }
-    Ok(Duration::from_secs_f64(secs))
+    // try_from_secs_f64 rejects negative, NaN, infinite *and* overflowing values;
+    // the plain from_secs_f64 would panic on a finite but too-large input (e.g. 1e300).
+    Duration::try_from_secs_f64(secs).map_err(|_| format!("invalid duration: {secs} seconds"))
 }
 
 /// Send the anonymous keyless beacon. `keylessState` is the wire value:
@@ -238,9 +237,11 @@ mod tests {
     }
 
     #[test]
-    fn secs_to_duration_rejects_negative_nan_infinite() {
+    fn secs_to_duration_rejects_negative_nan_infinite_overflow() {
         assert!(secs_to_duration(-1.0).is_err());
         assert!(secs_to_duration(f64::NAN).is_err());
         assert!(secs_to_duration(f64::INFINITY).is_err());
+        // finite and non-negative, but overflows Duration — would panic under from_secs_f64.
+        assert!(secs_to_duration(1e300).is_err());
     }
 }
