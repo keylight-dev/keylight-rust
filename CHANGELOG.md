@@ -5,6 +5,69 @@ All notable changes to the Keylight Rust SDK are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+Two breaking changes. Both are one-line fixes in your code, but neither is
+silent — read them before upgrading. Target release is **0.4.0**.
+
+### Changed — BREAKING
+
+- **`trial_duration_days` now defaults to `0`, not `14`.** Trials are opt-in.
+  A product that never calls `.trial_duration_days(n)` previously granted every
+  new install a **14-day full-entitlement trial** it never asked for; that
+  install now resolves straight to the free tier (or to expired, when the
+  product has no free tier).
+
+  **If you rely on a trial, you must now say so explicitly:**
+
+  ```rust
+  KeylightConfig::builder(tenant, product, sdk_key)
+      .trial_duration_days(14) // previously implicit — now required
+      .build()
+  ```
+
+  Upgrading without this line silently ends trials for new installs. Existing
+  installs already inside a trial window are unaffected: the trial start is
+  persisted, and the window is read from it.
+
+- **`upgrade_url()` now points at the portal's authenticated license route.**
+  It used to build `portal.keylight.dev/p/{tenant}/upgrade/{product}?key=…`,
+  a **retired** route — the only public portal page left is `/p/{tenant}/claim/
+  {product}`, so customers following the old link landed on a 404 instead of a
+  checkout. It now returns:
+
+  ```
+  https://portal.keylight.dev/t/{tenant}/license/{normalized_key}/upgrade
+  ```
+
+  The customer signs in with a magic link on arrival and upgrades in-portal.
+  The key rides in the path (normalized: whitespace and dashes stripped,
+  uppercased — matching the portal's `normalizedKey`), not in a query string,
+  and the product id is gone from the URL because the license carries its own
+  product server-side. If you display, log, or deep-link this URL, re-check
+  those call sites.
+
+### Changed
+
+- **The Tauri plugin's keyless heartbeat is now on by default.** A Tauri app is
+  typically a tray app that stays resident for days; with the heartbeat off,
+  it reported itself once per launch and the dashboard showed a live install as
+  last seen on the day it was installed — `last_seen` never moved past
+  `first_seen`. `HeartbeatOptions::default()` now has `enabled: true`.
+
+  The heartbeat no longer bundles license revalidation. It used to call
+  `refresh_if_needed()` on every tick, which would have meant turning on a
+  background network call on licensed devices as a side effect of wanting
+  liveness. That is now a separate opt-in flag, **off** by default:
+
+  ```rust
+  HeartbeatOptions { revalidate: true, ..Default::default() }
+  ```
+
+  The default path sends only the anonymous keyless beacon, which the SDK
+  already debounces to one request per 24h. Hosts calling `init()` get the
+  cadence with no code change; `enabled: false` still turns everything off.
+
 ## [0.3.6] - 2026-08-07
 
 ### Added

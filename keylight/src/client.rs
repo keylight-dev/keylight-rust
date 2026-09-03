@@ -691,14 +691,25 @@ impl Keylight {
         self.validate().ok()
     }
 
-    /// Hosted upgrade URL pre-filled with the cached key (parity with Swift upgradeURL).
+    /// Hosted upgrade page for the cached license, or `None` when no key is stored.
+    ///
+    /// Targets the portal's **authenticated** license route. The standalone
+    /// public upgrade form is retired — `/p/{tenant}/...` now serves claim only —
+    /// so a customer following this link signs in with a magic link and upgrades
+    /// in-portal.
+    ///
+    /// The path segment is the NORMALIZED key (whitespace and dashes stripped,
+    /// uppercased), because that is what the portal matches against
+    /// `licenses.normalizedKey`. Normalizing also keeps the segment inside the
+    /// route's `[A-Za-z0-9_-]` charset, so there is nothing left to
+    /// percent-encode. The product is not in the URL: the license itself carries
+    /// its product server-side.
     pub fn upgrade_url(&self) -> Option<String> {
         let key = self.cached_license_key()?;
         Some(format!(
-            "https://portal.keylight.dev/p/{}/upgrade/{}?key={}",
+            "https://portal.keylight.dev/t/{}/license/{}/upgrade",
             self.config.tenant_id,
-            self.config.product_id,
-            urlencode(&key)
+            normalize_key(&key)
         ))
     }
 
@@ -724,20 +735,15 @@ const REFRESH_STALE: i64 = 21600; // 6 h
 /// In-memory floor between two `active_revalidate()` network calls (Swift parity).
 const ACTIVE_REVALIDATE_DEBOUNCE: Duration = Duration::from_secs(60);
 
-fn urlencode(s: &str) -> String {
-    use std::fmt::Write;
-    let mut out = String::with_capacity(s.len());
-    for b in s.bytes() {
-        match b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
-                out.push(b as char)
-            }
-            _ => {
-                let _ = write!(out, "%{b:02X}");
-            }
-        }
-    }
-    out
+/// The server's license-key normalization: strip whitespace and dashes, then
+/// uppercase. Mirrors the Worker's `normalizeKey`, which is what every stored
+/// `normalizedKey` was built with — a key typed with spaces or in lowercase has
+/// to resolve to the same license.
+fn normalize_key(s: &str) -> String {
+    s.chars()
+        .filter(|c| !c.is_whitespace() && *c != '-')
+        .flat_map(char::to_uppercase)
+        .collect()
 }
 
 /// Best-effort human-readable machine name for the activation's `instance_name`

@@ -37,7 +37,7 @@ impl KeylightConfig {
             sdk_key: sdk_key.into(),
             trusted_keys: HashMap::new(),
             max_offline_days: Some(15),
-            trial_duration_days: 14,
+            trial_duration_days: 0,
             free_tier_enabled: false,
             app_version: None,
             base_url: "https://api.keylight.dev".into(),
@@ -138,7 +138,9 @@ mod tests {
     fn builder_defaults() {
         let c = KeylightConfig::builder("t", "p", "sdk_live_test").build();
         assert_eq!(c.base_url, "https://api.keylight.dev");
-        assert_eq!(c.trial_duration_days, 14);
+        // Trials are opt-in: a product that never calls .trial_duration_days()
+        // has no trial, rather than silently granting a 14-day one.
+        assert_eq!(c.trial_duration_days, 0);
         assert!(!c.free_tier_enabled);
         assert_eq!(c.sdk_key, "sdk_live_test");
     }
