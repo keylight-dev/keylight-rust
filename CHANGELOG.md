@@ -47,6 +47,38 @@ silent — read them before upgrading. Target release is **0.4.0**.
   product server-side. If you display, log, or deep-link this URL, re-check
   those call sites.
 
+### Added
+
+- **`start_keyless_heartbeat()` — a keyless cadence for hosts the Tauri plugin
+  doesn't cover.** `report_keyless_state` has never had a cadence in this crate,
+  so a resident non-Tauri host — a daemon, a service, a desktop app built
+  without the plugin — beaconed once at startup and then looked dead to the
+  dashboard for as long as it ran: `last_seen` never moved past `first_seen`.
+
+  ```rust
+  let kl = Arc::new(Keylight::new(cfg)?);
+  let _heartbeat = kl.start_keyless_heartbeat(Duration::from_secs(6 * 60 * 60));
+  ```
+
+  It takes `Arc<Self>` because a thread cannot outlive a `&self` borrow, and
+  returns an RAII handle: dropping it stops and joins the thread, so the cadence
+  can't outlive the scope that asked for it. The thread holds only a `Weak`, so
+  it can never keep the client alive — drop the last `Arc` and the next tick
+  exits. A zero interval is refused rather than spun on.
+
+  Each tick reports only when `state()` is keyless; a licensed device sends
+  nothing and reports liveness through `/validate`. The thread keeps ticking
+  across that boundary, so a lapsed license resumes on its own. The 24h debounce
+  inside `report_keyless_state` is untouched.
+
+  Opt-in by design — unlike the Tauri plugin, the crate does not spawn threads
+  behind your back.
+
+- **`keyless_state_for(&LicenseState) -> Option<KeylessState>` is now public.**
+  The Tauri plugin had a private copy; the rule now lives in one place and the
+  plugin uses it. The match is exhaustive, so adding a `LicenseState` variant
+  fails to compile here rather than silently falling through to "beacon it".
+
 ### Changed
 
 - **The Tauri plugin's keyless heartbeat is now on by default.** A Tauri app is

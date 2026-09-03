@@ -25,6 +25,21 @@ pub enum KeylessState {
     FreeTier,
     Expired,
 }
+/// The beacon state a resolved license state calls for, or `None` when it calls
+/// for none. `Licensed` and `Limited` report liveness through `/validate`, not
+/// the keyless beacon; `Invalid` is a denial, not a device to count.
+///
+/// Exhaustive on purpose: adding a variant to [`LicenseState`] must fail to
+/// compile here rather than silently fall through to "beacon it".
+pub fn keyless_state_for(state: &LicenseState) -> Option<KeylessState> {
+    match state {
+        LicenseState::Trial { .. } => Some(KeylessState::Trial),
+        LicenseState::FreeTier => Some(KeylessState::FreeTier),
+        LicenseState::Expired => Some(KeylessState::Expired),
+        LicenseState::Licensed | LicenseState::Limited | LicenseState::Invalid => None,
+    }
+}
+
 impl KeylessState {
     pub fn wire(&self) -> &'static str {
         match self {

@@ -1,4 +1,4 @@
-use keylight::state::{KeylessState, LicenseState};
+use keylight::state::{KeylessState, keyless_state_for};
 use keylight::{Keylight, KeylightConfig};
 use std::sync::Arc;
 use std::time::Duration;
@@ -67,16 +67,6 @@ fn parse_keyless_state(s: &str) -> Option<KeylessState> {
         "trial" => Some(KeylessState::Trial),
         "free_tier" => Some(KeylessState::FreeTier),
         "expired" => Some(KeylessState::Expired),
-        _ => None,
-    }
-}
-
-/// Map the resolved license state to the keyless beacon state, if one applies.
-fn keyless_state_for(state: &LicenseState) -> Option<KeylessState> {
-    match state {
-        LicenseState::Trial { .. } => Some(KeylessState::Trial),
-        LicenseState::FreeTier => Some(KeylessState::FreeTier),
-        LicenseState::Expired => Some(KeylessState::Expired),
         _ => None,
     }
 }
@@ -174,25 +164,6 @@ mod tests {
         );
         assert_eq!(parse_keyless_state("expired"), Some(KeylessState::Expired));
         assert_eq!(parse_keyless_state("bogus"), None);
-    }
-
-    #[test]
-    fn maps_license_state_to_keyless_state() {
-        assert_eq!(
-            keyless_state_for(&LicenseState::Trial { days_left: 3 }),
-            Some(KeylessState::Trial)
-        );
-        assert_eq!(
-            keyless_state_for(&LicenseState::FreeTier),
-            Some(KeylessState::FreeTier)
-        );
-        assert_eq!(
-            keyless_state_for(&LicenseState::Expired),
-            Some(KeylessState::Expired)
-        );
-        assert_eq!(keyless_state_for(&LicenseState::Licensed), None);
-        assert_eq!(keyless_state_for(&LicenseState::Limited), None);
-        assert_eq!(keyless_state_for(&LicenseState::Invalid), None);
     }
 
     // A tray app is the normal shape of a Tauri app, and it stays resident for

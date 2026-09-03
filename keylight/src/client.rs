@@ -9,7 +9,7 @@ use crate::store::device::{DeviceIdentity, SystemDeviceIdentity};
 use crate::store::{LicenseStore, account, encrypted_file::EncryptedFileStore};
 use crate::{KeylightConfig, KeylightError, Lease, Result, telemetry, verify_lease};
 use serde::Deserialize;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone)]
@@ -691,6 +691,82 @@ impl Keylight {
         self.validate().ok()
     }
 
+    /// Re-report the keyless beacon on a cadence for as long as the returned
+    /// handle is alive.
+    ///
+    /// `report_keyless_state` has no cadence of its own, so a resident host — a
+    /// daemon, a service, a desktop app built without the Tauri plugin —
+    /// beacons once at startup and then looks dead to the dashboard for as long
+    /// as it runs: `last_seen` never moves past `first_seen`. This is that
+    /// cadence, for hosts the plugin does not cover.
+    ///
+    /// Each tick reports only when [`Keylight::state`] resolves to a keyless
+    /// state; a licensed device sends nothing and reports liveness through
+    /// `/validate`. The thread keeps ticking across that boundary, so a license
+    /// that lapses resumes beaconing on its own. The 24h debounce inside
+    /// `report_keyless_state` is untouched — this only guarantees the beacon
+    /// gets the chance, so a tighter interval costs nothing on the wire.
+    ///
+    /// Six hours is the cross-SDK default; it matches the Worker's server-side
+    /// gate on keyless writes, so a tick never arrives before the server is
+    /// willing to record it. A zero interval is refused rather than spun on.
+    ///
+    /// Takes `Arc<Self>` because a thread cannot outlive a `&self` borrow. The
+    /// thread holds only a [`Weak`], so it can never keep the client alive:
+    /// drop the last `Arc` and the next tick exits. Dropping the handle stops
+    /// and joins the thread, so it cannot outlive the caller's scope either.
+    ///
+    /// ```no_run
+    /// # use std::{sync::Arc, time::Duration};
+    /// # use keylight::{Keylight, KeylightConfig};
+    /// # let cfg = KeylightConfig::builder("t", "p", "sdk_live_x").build();
+    /// let kl = Arc::new(Keylight::new(cfg)?);
+    /// let _heartbeat = kl.start_keyless_heartbeat(Duration::from_secs(6 * 60 * 60));
+    /// // ... app runs; the beacon keeps reporting until `_heartbeat` drops.
+    /// # Ok::<(), keylight::KeylightError>(())
+    /// ```
+    pub fn start_keyless_heartbeat(self: &Arc<Self>, interval: Duration) -> KeylessHeartbeat {
+        let stop = Arc::new((Mutex::new(false), Condvar::new()));
+        if interval.is_zero() {
+            // Nothing to schedule; the handle is inert but still valid to hold.
+            return KeylessHeartbeat { stop, thread: None };
+        }
+        let weak = Arc::downgrade(self);
+        let thread_stop = Arc::clone(&stop);
+        let thread = std::thread::spawn(move || {
+            let (lock, cv) = &*thread_stop;
+            let mut stopped = lock.lock().unwrap_or_else(|e| e.into_inner());
+            loop {
+                // Interruptible wait: a dropped handle wakes this immediately
+                // rather than leaving the caller blocked for a full interval.
+                let (guard, _) = cv
+                    .wait_timeout(stopped, interval)
+                    .unwrap_or_else(|e| e.into_inner());
+                stopped = guard;
+                if *stopped {
+                    return;
+                }
+                // Upgrade per tick: the client may have been dropped while we
+                // waited, and holding it across the wait would defeat the Weak.
+                let Some(kl) = weak.upgrade() else { return };
+                if let Some(ks) = crate::state::keyless_state_for(&kl.state()) {
+                    // Release the lock across the blocking network call so a
+                    // drop during a send is not stuck behind it.
+                    drop(stopped);
+                    kl.report_keyless_state(ks);
+                    stopped = lock.lock().unwrap_or_else(|e| e.into_inner());
+                    if *stopped {
+                        return;
+                    }
+                }
+            }
+        });
+        KeylessHeartbeat {
+            stop,
+            thread: Some(thread),
+        }
+    }
+
     /// Hosted upgrade page for the cached license, or `None` when no key is stored.
     ///
     /// Targets the portal's **authenticated** license route. The standalone
@@ -734,6 +810,28 @@ const REFRESH_DEBOUNCE: i64 = 300; // 5 min
 const REFRESH_STALE: i64 = 21600; // 6 h
 /// In-memory floor between two `active_revalidate()` network calls (Swift parity).
 const ACTIVE_REVALIDATE_DEBOUNCE: Duration = Duration::from_secs(60);
+
+/// RAII handle for [`Keylight::start_keyless_heartbeat`]. Dropping it signals
+/// the thread and joins it, so the cadence cannot outlive the scope that asked
+/// for it. Holds no reference to the client.
+pub struct KeylessHeartbeat {
+    stop: Arc<(Mutex<bool>, Condvar)>,
+    thread: Option<std::thread::JoinHandle<()>>,
+}
+
+impl Drop for KeylessHeartbeat {
+    fn drop(&mut self) {
+        {
+            let (lock, cv) = &*self.stop;
+            let mut stopped = lock.lock().unwrap_or_else(|e| e.into_inner());
+            *stopped = true;
+            cv.notify_all();
+        }
+        if let Some(t) = self.thread.take() {
+            let _ = t.join();
+        }
+    }
+}
 
 /// The server's license-key normalization: strip whitespace and dashes, then
 /// uppercase. Mirrors the Worker's `normalizeKey`, which is what every stored

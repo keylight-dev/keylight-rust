@@ -93,7 +93,8 @@ pub use client::{ActivationResult, Keylight, ValidationResult};
 
 pub mod state;
 pub use state::{
-    KeylessState, LicenseLifecycleEvent, LicenseState, TrialStatus, lifecycle_event, resolve_state,
+    KeylessState, LicenseLifecycleEvent, LicenseState, TrialStatus, keyless_state_for,
+    lifecycle_event, resolve_state,
 };
 
 pub mod clock;
