@@ -895,20 +895,6 @@ impl Keylight {
         }
     }
 
-    /// Hosted upgrade page for the cached license, or `None` when no key is stored.
-    ///
-    /// Targets the portal's **authenticated** license route. The standalone
-    /// public upgrade form is retired — `/p/{tenant}/...` now serves claim only —
-    /// so a customer following this link signs in with a magic link and upgrades
-    /// in-portal.
-    ///
-    /// The path segment is the NORMALIZED key (whitespace and dashes stripped,
-    /// uppercased), because that is what the portal matches against
-    /// `licenses.normalizedKey`. Normalizing also keeps the segment inside the
-    /// route's `[A-Za-z0-9_-]` charset, so there is nothing left to
-    /// percent-encode. The product is not in the URL: the license itself carries
-    /// its product server-side.
-
     /// Poll-revalidate briefly after a customer completes an upgrade, so the new
     /// entitlements (or a mid-flight rejection) show up in the running app without
     /// waiting for the normal refresh cadence (parity with Swift's
@@ -965,7 +951,19 @@ impl Keylight {
         ents
     }
 
-    /// Hosted upgrade URL pre-filled with the cached key (parity with Swift upgradeURL).
+    /// Hosted upgrade page for the cached license, or `None` when no key is stored.
+    ///
+    /// Targets the portal's **authenticated** license route. The standalone
+    /// public upgrade form is retired — `/p/{tenant}/...` now serves claim only —
+    /// so a customer following this link signs in with a magic link and upgrades
+    /// in-portal.
+    ///
+    /// The path segment is the NORMALIZED key (whitespace and dashes stripped,
+    /// uppercased), because that is what the portal matches against
+    /// `licenses.normalizedKey`. Normalizing also keeps the segment inside the
+    /// route's `[A-Za-z0-9_-]` charset, so there is nothing left to
+    /// percent-encode. The product is not in the URL: the license itself carries
+    /// its product server-side.
     pub fn upgrade_url(&self) -> Option<String> {
         let key = self.cached_license_key()?;
         Some(format!(
