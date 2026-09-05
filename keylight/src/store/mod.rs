@@ -17,6 +17,10 @@ pub mod account {
     pub const KEYLESS_LAST_STATE: &str = "keyless_last_state";
     pub const CACHED_HARDWARE_ID: &str = "cached_hardware_id";
     pub const LAST_KEYLESS_PING_AT: &str = "last_keyless_ping_at";
+    /// Last product configuration heard from the server (trial length, free
+    /// tier). Cached so an offline launch uses the tenant's real settings
+    /// rather than falling back to the compiled-in seed.
+    pub const PRODUCT_CONFIG: &str = "product_config";
 }
 
 /// Opaque per-account byte storage. Default impl is `EncryptedFileStore`.

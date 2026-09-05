@@ -88,6 +88,9 @@ pub use store::LicenseStore;
 pub use store::device::{DeviceIdentity, FixedDeviceIdentity, SystemDeviceIdentity};
 pub use store::encrypted_file::EncryptedFileStore;
 
+pub mod product_config;
+pub use product_config::{CachedProductConfig, ProductConfigFields};
+
 pub mod client;
 pub use client::{ActivationResult, Keylight, ValidationResult};
 
