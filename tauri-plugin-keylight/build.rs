@@ -4,6 +4,8 @@ const COMMANDS: &[&str] = &[
     "has_entitlement",
     "check_on_launch",
     "refresh_if_needed",
+    "active_revalidate",
+    "refresh_after_upgrade",
     "report_keyless_state",
 ];
 

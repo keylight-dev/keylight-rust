@@ -5,6 +5,29 @@ All notable changes to the Keylight Rust SDK are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **`refresh_after_upgrade(timeout, poll_interval)` — brief poll-revalidation
+  after an upgrade.** Call it when the customer returns from completing an
+  upgrade so new entitlements unlock in the running app within seconds,
+  instead of waiting for the normal refresh cadence. It re-validates against
+  the server every `poll_interval` (clamped to a 100ms floor) until either
+  the license's entitlement set or its resolved state changes, or `timeout`
+  elapses — covering the gap between checkout completing and the payment
+  provider's webhook actually reaching Keylight. Returns `false` on timeout
+  or when no license is stored (the latter makes no network call). Parity
+  with Swift's `LicenseManager.refreshAfterUpgrade(timeout:pollInterval:)`.
+
+  This call blocks for up to `timeout` — run it on a background thread
+  (`std::thread::spawn`), not on a UI/main thread. A seat-only upgrade whose
+  entitlement set and state end up unchanged (e.g. a device-cap bump with no
+  feature/tier change) is invisible to it and will run to `timeout`; the
+  normal refresh cadence still picks that up on its own schedule.
+- **Tauri plugin: `active_revalidate` and `refresh_after_upgrade` commands**,
+  exposing both to the JS side of a Tauri app.
+
 ## [0.5.0] - 2026-09-05
 
 ### Added

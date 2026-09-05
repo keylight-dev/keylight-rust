@@ -9,6 +9,8 @@ Allows activating, validating, and refreshing licenses, checking entitlements, a
 - `allow-has-entitlement`
 - `allow-check-on-launch`
 - `allow-refresh-if-needed`
+- `allow-active-revalidate`
+- `allow-refresh-after-upgrade`
 - `allow-report-keyless-state`
 
 ## Permission Table
@@ -42,6 +44,32 @@ Enables the activate command without any pre-configured scope.
 <td>
 
 Denies the activate command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`keylight:allow-active-revalidate`
+
+</td>
+<td>
+
+Enables the active_revalidate command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`keylight:deny-active-revalidate`
+
+</td>
+<td>
+
+Denies the active_revalidate command without any pre-configured scope.
 
 </td>
 </tr>
@@ -94,6 +122,32 @@ Enables the has_entitlement command without any pre-configured scope.
 <td>
 
 Denies the has_entitlement command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`keylight:allow-refresh-after-upgrade`
+
+</td>
+<td>
+
+Enables the refresh_after_upgrade command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`keylight:deny-refresh-after-upgrade`
+
+</td>
+<td>
+
+Denies the refresh_after_upgrade command without any pre-configured scope.
 
 </td>
 </tr>
