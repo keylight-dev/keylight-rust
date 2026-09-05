@@ -46,7 +46,11 @@ impl Scripted {
         })
     }
     fn saw_path_ending(&self, suffix: &str) -> bool {
-        self.paths.lock().unwrap().iter().any(|p| p.ends_with(suffix))
+        self.paths
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|p| p.ends_with(suffix))
     }
 }
 
@@ -64,7 +68,12 @@ struct Harness {
     store: Arc<dyn LicenseStore>,
 }
 
-fn harness(dir: &str, seed_days: u32, seed_free_tier: bool, transport: Arc<dyn Transport>) -> Harness {
+fn harness(
+    dir: &str,
+    seed_days: u32,
+    seed_free_tier: bool,
+    transport: Arc<dyn Transport>,
+) -> Harness {
     let d = std::env::temp_dir().join(dir);
     let _ = std::fs::remove_dir_all(&d);
     let store: Arc<dyn LicenseStore> =
@@ -88,7 +97,10 @@ fn now() -> i64 {
 
 fn seed_trial_start(store: &Arc<dyn LicenseStore>, days_ago: i64) {
     store
-        .set_string(account::TRIAL_START, &(now() - days_ago * 86400).to_string())
+        .set_string(
+            account::TRIAL_START,
+            &(now() - days_ago * 86400).to_string(),
+        )
         .unwrap();
 }
 
@@ -98,19 +110,32 @@ fn seed_trial_start(store: &Arc<dyn LicenseStore>, days_ago: i64) {
 /// that shipped with none.
 #[test]
 fn server_duration_grants_a_trial_when_the_seed_is_zero() {
-    let h = harness("kl-cfg-1", 0, false, Scripted::new(r#"{"trial_duration_days":14}"#));
+    let h = harness(
+        "kl-cfg-1",
+        0,
+        false,
+        Scripted::new(r#"{"trial_duration_days":14}"#),
+    );
     h.client.fetch_config();
     seed_trial_start(&h.store, 3);
 
     assert_eq!(h.client.effective_trial_duration_days(), 14);
-    assert_eq!(h.client.check_trial(), TrialStatus::Active { days_left: 11 });
+    assert_eq!(
+        h.client.check_trial(),
+        TrialStatus::Active { days_left: 11 }
+    );
 }
 
 /// The reverse direction, and the one a tenant actually notices: trials switched
 /// off server-side must not be resurrected by the compiled-in seed.
 #[test]
 fn server_zero_turns_off_a_seed_enabled_trial() {
-    let h = harness("kl-cfg-2", 14, false, Scripted::new(r#"{"trial_duration_days":0}"#));
+    let h = harness(
+        "kl-cfg-2",
+        14,
+        false,
+        Scripted::new(r#"{"trial_duration_days":0}"#),
+    );
     h.client.fetch_config();
     seed_trial_start(&h.store, 1);
 
@@ -138,7 +163,12 @@ fn absent_config_falls_through_to_the_seed_not_to_zero() {
 /// their tenant enabled.
 #[test]
 fn start_trial_stamps_even_at_a_zero_duration() {
-    let h = harness("kl-cfg-4", 0, false, Scripted::new(r#"{"trial_duration_days":14}"#));
+    let h = harness(
+        "kl-cfg-4",
+        0,
+        false,
+        Scripted::new(r#"{"trial_duration_days":14}"#),
+    );
     h.client.start_trial().unwrap();
 
     assert!(
@@ -172,7 +202,12 @@ fn start_trial_mints_the_instance_id_even_at_a_zero_duration() {
 /// Otherwise the trial is farmable by reinstalling.
 #[test]
 fn an_old_stamp_is_honoured_never_restarted() {
-    let h = harness("kl-cfg-6", 0, false, Scripted::new(r#"{"trial_duration_days":14}"#));
+    let h = harness(
+        "kl-cfg-6",
+        0,
+        false,
+        Scripted::new(r#"{"trial_duration_days":14}"#),
+    );
     seed_trial_start(&h.store, 60);
     h.client.fetch_config();
 
@@ -200,7 +235,12 @@ fn start_trial_does_not_restart_an_existing_stamp() {
 /// A relaunch reads the last known server settings, not the seed.
 #[test]
 fn a_server_zero_survives_a_relaunch_as_zero() {
-    let h = harness("kl-cfg-8", 14, false, Scripted::new(r#"{"trial_duration_days":0}"#));
+    let h = harness(
+        "kl-cfg-8",
+        14,
+        false,
+        Scripted::new(r#"{"trial_duration_days":0}"#),
+    );
     h.client.fetch_config();
 
     let cfg = KeylightConfig::builder("t", "p", "sdk_live_test")
@@ -290,7 +330,12 @@ fn a_partial_response_merges_rather_than_replaces() {
 /// than falling back to the seed.
 #[test]
 fn a_failed_fetch_keeps_the_cached_value() {
-    let h = harness("kl-cfg-12", 30, false, Scripted::new(r#"{"trial_duration_days":7}"#));
+    let h = harness(
+        "kl-cfg-12",
+        30,
+        false,
+        Scripted::new(r#"{"trial_duration_days":7}"#),
+    );
     h.client.fetch_config();
 
     let offline = Keylight::with_parts(
@@ -311,9 +356,17 @@ fn a_failed_fetch_keeps_the_cached_value() {
 /// licensed install.
 #[test]
 fn validate_carries_the_config_and_it_is_absorbed() {
-    let transport = Scripted::new(r#"{"valid":true,"trial_duration_days":21,"free_tier_enabled":true}"#);
-    let h = harness("kl-cfg-13", 30, false, Arc::clone(&transport) as Arc<dyn Transport>);
-    h.store.set_string(account::LICENSE_KEY, "TEST-KEY").unwrap();
+    let transport =
+        Scripted::new(r#"{"valid":true,"trial_duration_days":21,"free_tier_enabled":true}"#);
+    let h = harness(
+        "kl-cfg-13",
+        30,
+        false,
+        Arc::clone(&transport) as Arc<dyn Transport>,
+    );
+    h.store
+        .set_string(account::LICENSE_KEY, "TEST-KEY")
+        .unwrap();
     h.store.set_string(account::INSTANCE_ID, "inst-1").unwrap();
 
     h.client.validate().unwrap();
@@ -326,10 +379,14 @@ fn validate_carries_the_config_and_it_is_absorbed() {
 #[test]
 fn the_keyless_beacon_response_carries_the_config() {
     let transport = Scripted::new(r#"{"trial_duration_days":7}"#);
-    let h = harness("kl-cfg-14", 30, false, Arc::clone(&transport) as Arc<dyn Transport>);
+    let h = harness(
+        "kl-cfg-14",
+        30,
+        false,
+        Arc::clone(&transport) as Arc<dyn Transport>,
+    );
 
-    h.client
-        .report_keyless_state(keylight::KeylessState::Trial);
+    h.client.report_keyless_state(keylight::KeylessState::Trial);
 
     assert_eq!(h.client.effective_trial_duration_days(), 7);
 }
@@ -339,7 +396,12 @@ fn the_keyless_beacon_response_carries_the_config() {
 #[test]
 fn state_resolution_does_not_fetch_config() {
     let transport = Scripted::new(r#"{"trial_duration_days":7}"#);
-    let h = harness("kl-cfg-15", 14, false, Arc::clone(&transport) as Arc<dyn Transport>);
+    let h = harness(
+        "kl-cfg-15",
+        14,
+        false,
+        Arc::clone(&transport) as Arc<dyn Transport>,
+    );
 
     h.client.start_trial().unwrap();
     let _ = h.client.state();
