@@ -5,6 +5,59 @@ All notable changes to the Keylight Rust SDK are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **The trial length is the server's, not the build's.** A tenant could set a
+  trial length in the dashboard and nothing happened to their Rust app:
+  `KeylightConfig::trial_duration_days` and `free_tier_enabled` were read
+  directly wherever a trial decision was made, so the value compiled into the
+  build was the only one that ever applied. New
+  `Keylight::effective_trial_duration_days()` and
+  `Keylight::effective_free_tier_enabled()` resolve **server value → local seed
+  → 0**, and `check_trial()` / `state()` now read those. The config fields stay
+  as a *seed*, deliberately: a brand-new install genuinely has nothing else, and
+  removing them would make first-launch behaviour depend on the network.
+- **The settings ride on calls already being made**, so launch-time network I/O
+  stays at zero. `validate` covers every licensed install and the keyless beacon
+  covers every unlicensed one; both responses now carry `trial_duration_days`
+  and `free_tier_enabled`, and both are absorbed. `Keylight::fetch_config()`
+  reads the dedicated `GET /{tenant}/{product}/config` route for hosts that want
+  an explicit refresh — it is **not** on the launch path, and a test asserts
+  that resolving state never touches it.
+- **`sdk_trial_duration_days` on activate and validate** — the length the build
+  was *compiled* with, not the effective one, since echoing the server's own
+  number back diagnoses nothing. It catches the ordinary mistake of a 30-day
+  build against a 14-day dashboard setting. Diagnostic only: the server must
+  never gate on it, because a patched client sends whatever its author wants.
+
+### Fixed
+
+- **`0` is a real setting and absence is not zero.** The cached pair is stored
+  as `Option`s and merged field by field, so a worker that sends neither field
+  leaves what the install already learned alone, a server `0` survives a
+  relaunch as `0` rather than falling back to the seed, and a server
+  `free_tier_enabled: false` is not mistaken for "never heard".
+- **`start_trial()` stamps the clock even at a zero duration.** Once the
+  duration is server-owned, `0` is indistinguishable from "the config has not
+  arrived yet", so bailing out left no start timestamp for a later-arriving
+  duration to measure and the user never got the trial their tenant enabled. The
+  stamp grants nothing on its own — `check_trial()` still reports no trial while
+  the effective duration is 0. An existing stamp is never overwritten, so
+  enabling a trial 60 days after an install does not hand it a fresh window.
+
+### Notes
+
+- No breaking change. `KeylightConfig` gains no field, so construction — builder
+  or struct literal — is untouched. `#[non_exhaustive]` was deliberately **not**
+  added: it would break the documented `KeylightConfig { .. }` literal that
+  `max_offline_days` tells users to reach for, and the guard only earns its cost
+  when a field is actually being added.
+- 100 → 115 tests.
+- Ports the contract shipped in `keylight-cpp` 0.2.0/0.2.1; see that repo's
+  `docs/superpowers/specs/2026-09-05-trial-parity-handoff.md`.
+
 ## [0.4.0] - 2026-09-04
 
 Two breaking changes. Both are one-line fixes in your code, but neither is

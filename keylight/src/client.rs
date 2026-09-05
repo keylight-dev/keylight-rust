@@ -4,6 +4,7 @@
 use crate::clock::{clock_manipulated, clock_rolled_back};
 use crate::http::retry::{MAX_ATTEMPTS, RetryDecision, backoff_ms, clamp_sleep_ms, decide};
 use crate::http::{Transport, TransportOutcome, ureq_transport::UreqTransport};
+use crate::product_config::{CachedProductConfig, ProductConfigFields};
 use crate::state::{KeylessState, LicenseState, TrialStatus, resolve_state};
 use crate::store::device::{DeviceIdentity, SystemDeviceIdentity};
 use crate::store::{LicenseStore, account, encrypted_file::EncryptedFileStore};
@@ -47,6 +48,12 @@ struct ValidateResp {
     license_expires_at: Option<i64>,
     lease: Option<Lease>,
     error: Option<String>,
+    /// Server-owned product settings, riding on a call the SDK already makes.
+    /// Optional because an older worker sends neither.
+    #[serde(default)]
+    trial_duration_days: Option<u32>,
+    #[serde(default)]
+    free_tier_enabled: Option<bool>,
 }
 #[derive(Deserialize)]
 struct ErrorResp {
@@ -129,6 +136,20 @@ impl Keylight {
     /// `cpu_cores`, `memory`) — for the
     /// routes that describe a device (activate / validate / keyless).
     /// Deactivate stays on `body_with_telemetry`: it only names an instance.
+    /// Reports the trial length this build was **compiled with** — the seed, not
+    /// the effective value. Echoing the server's own number back diagnoses
+    /// nothing; the seed catches the ordinary mistake of a 30-day build running
+    /// against a 14-day dashboard setting, in a minute rather than a week of
+    /// support tickets.
+    ///
+    /// Diagnostic only. The server must never gate on it: a patched client sends
+    /// whatever its author wants, so a match proves nothing about the client.
+    fn insert_seed_trial_telemetry(&self, map: &mut serde_json::Map<String, serde_json::Value>) {
+        map.insert(
+            "sdk_trial_duration_days".into(),
+            self.config.trial_duration_days.into(),
+        );
+    }
     fn body_with_device_telemetry(
         &self,
         mut map: serde_json::Map<String, serde_json::Value>,
@@ -260,6 +281,7 @@ impl Keylight {
         if let Some(hash) = self.machine_hash() {
             map.insert("machine_hash".into(), hash.into());
         }
+        self.insert_seed_trial_telemetry(&mut map);
         let body = self.body_with_device_telemetry(map);
 
         let (_, text) = match self.post("activate", &body, &[]) {
@@ -330,6 +352,7 @@ impl Keylight {
         if let Some(hash) = self.machine_hash() {
             map.insert("machine_hash".into(), hash.into());
         }
+        self.insert_seed_trial_telemetry(&mut map);
         let body = self.body_with_device_telemetry(map);
 
         let (_status, text) = match self.post("validate", &body, &[422]) {
@@ -350,6 +373,14 @@ impl Keylight {
         };
         let resp: ValidateResp =
             serde_json::from_str(&text).map_err(|_| KeylightError::InvalidResponse)?;
+        // Absorb before the outcome branches below: the settings are valid
+        // regardless of whether the licence itself validated, and an early
+        // return would drop them for exactly the installs that keep failing.
+        self.absorb_config_fields(&ProductConfigFields {
+            trial_duration_days: resp.trial_duration_days,
+            free_tier_enabled: resp.free_tier_enabled,
+            ..Default::default()
+        });
         if let Some(lease) = &resp.lease {
             self.verify_or_reject(lease)?;
         }
@@ -473,6 +504,97 @@ impl Keylight {
 }
 
 impl Keylight {
+    /// Trial length actually in force: server value → local seed → 0.
+    ///
+    /// [`KeylightConfig::trial_duration_days`] is demoted to a *seed*, used only
+    /// before this install has ever heard from the server. It is deliberately
+    /// not removed: a brand-new install genuinely has nothing else, and dropping
+    /// it would make first-launch behaviour depend on the network.
+    pub fn effective_trial_duration_days(&self) -> u32 {
+        self.cached_product_config()
+            .trial_duration_days
+            .unwrap_or(self.config.trial_duration_days)
+    }
+
+    /// Free-tier flag actually in force: server value → local seed → false.
+    pub fn effective_free_tier_enabled(&self) -> bool {
+        self.cached_product_config()
+            .free_tier_enabled
+            .unwrap_or(self.config.free_tier_enabled)
+    }
+
+    /// Explicitly refresh the product config from `GET /{tenant}/{product}/config`.
+    ///
+    /// **Not for the launch path.** The same two settings ride on `validate`
+    /// (every licensed install) and on the keyless beacon (every unlicensed
+    /// one), which is what keeps launch-time network I/O at zero. This exists
+    /// for hosts that want an explicit refresh — a settings pane, a manual
+    /// "check now" — and for tests.
+    ///
+    /// Failures are swallowed: a refresh that cannot reach the network leaves
+    /// the last known settings in place rather than falling back to the seed.
+    pub fn fetch_config(&self) {
+        let url = self.api_url("config");
+        let headers = self.headers();
+        let text = match self.transport.get(&url, &headers) {
+            TransportOutcome::Response(r) if r.status == 200 => r.body,
+            _ => return,
+        };
+        if let Ok(fields) = serde_json::from_str::<ProductConfigFields>(&text) {
+            self.absorb_config_fields(&fields);
+        }
+    }
+
+    /// Merge server-sent settings into the cache, **field by field**.
+    ///
+    /// A response carrying neither field leaves the cache untouched — an older
+    /// worker that knows nothing about these settings must not wipe what this
+    /// install already learned. Each field is written only when the server
+    /// actually sent it, rather than overwriting the pair.
+    pub(crate) fn absorb_config_fields(&self, fields: &ProductConfigFields) {
+        if fields.is_empty() {
+            return;
+        }
+        let mut cached = self.cached_product_config();
+        if let Some(days) = fields.trial_duration_days {
+            cached.trial_duration_days = Some(days);
+        }
+        if let Some(free_tier) = fields.free_tier_enabled {
+            cached.free_tier_enabled = Some(free_tier);
+        }
+        if let Ok(json) = serde_json::to_string(&cached) {
+            let _ = self.store.set_string(account::PRODUCT_CONFIG, &json);
+        }
+    }
+
+    pub(crate) fn cached_product_config(&self) -> CachedProductConfig {
+        self.store
+            .get_string(account::PRODUCT_CONFIG)
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_default()
+    }
+}
+
+impl Keylight {
+    /// Stamps the trial start time, **unconditionally** — including when the
+    /// effective duration is currently 0.
+    ///
+    /// This looks wrong and is not. Once the duration is server-owned, `0` is
+    /// indistinguishable from "the config has not arrived yet", so returning
+    /// early at a zero duration leaves no start timestamp for a later-arriving
+    /// duration to measure, and the user never gets the trial their tenant
+    /// enabled. The stamp grants nothing on its own: [`Keylight::check_trial`]
+    /// still reports no trial while the effective duration is 0. It only fixes
+    /// *when* the window starts if a duration arrives later.
+    ///
+    /// An existing stamp is never overwritten, so enabling a trial months after
+    /// an install does not hand it a fresh window — otherwise it would be
+    /// farmable by reinstalling.
+    ///
+    /// The anonymous instance id is minted at the same point for the same
+    /// reason: nothing calls `start_trial()` a second time once the duration
+    /// lands, so minting it only at a non-zero duration would lose attribution
+    /// for any install that started offline.
     pub fn start_trial(&self) -> Result<()> {
         if self.store.get_string(account::TRIAL_START).is_none() {
             self.store
@@ -496,7 +618,7 @@ impl Keylight {
             None => return TrialStatus::NotStarted,
         };
         let days_elapsed = (Self::now() - start) / 86400;
-        let days_left = self.config.trial_duration_days as i64 - days_elapsed;
+        let days_left = self.effective_trial_duration_days() as i64 - days_elapsed;
         if days_left > 0 {
             TrialStatus::Active { days_left }
         } else {
@@ -544,7 +666,13 @@ impl Keylight {
         // Route through the shared retry/backoff loop; with no decodable 4xx an
         // `Ok` here is exactly an HTTP 200, so the debounce state is persisted
         // only on success. Errors are swallowed (anonymous best-effort beacon).
-        if self.post("keyless", &body, &[]).is_ok() {
+        if let Ok((_status, text)) = self.post("keyless", &body, &[]) {
+            // The beacon response carries the product config for unlicensed
+            // installs. A body that will not parse is ignored: the beacon is
+            // best-effort and must not disturb the debounce bookkeeping below.
+            if let Ok(fields) = serde_json::from_str::<ProductConfigFields>(&text) {
+                self.absorb_config_fields(&fields);
+            }
             let _ = self
                 .store
                 .set_string(account::KEYLESS_LAST_STATE, state.wire());
@@ -604,7 +732,7 @@ impl Keylight {
             current,
             self.has_stored_license(),
             &self.check_trial(),
-            self.config.free_tier_enabled,
+            self.effective_free_tier_enabled(),
         )
     }
 }
