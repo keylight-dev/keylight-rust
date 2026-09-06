@@ -18,6 +18,21 @@ pub struct KeylightConfig {
     /// literal `KeylightConfig { .. }`) to disable the cap entirely, e.g. for
     /// air-gapped consumers.
     pub max_offline_days: Option<u32>,
+    /// Require server-owned product settings to carry a valid Ed25519 signature
+    /// before they are cached. Defaults to `false`.
+    ///
+    /// Off by default on purpose: the worker signs a product's settings only
+    /// once that product has a trial length configured, and every other product
+    /// is served unsigned. Turning this on for one of those would reject
+    /// legitimate responses and pin the install to its compiled-in seed.
+    ///
+    /// Trust is rooted in `trusted_keys`, which you compile into your app. The
+    /// SDK deliberately does not fetch a keyset at runtime: keys fetched over
+    /// the same channel that serves the config would let anyone able to forge
+    /// one forge the other. The cost is that rotating to a new `kid` leaves
+    /// shipped builds on their last cached settings until they update — a
+    /// freeze, not a failure.
+    pub require_signed_config: bool,
     pub trial_duration_days: u32,
     pub free_tier_enabled: bool,
     pub app_version: Option<String>,
@@ -38,6 +53,7 @@ impl KeylightConfig {
             trusted_keys: HashMap::new(),
             max_offline_days: Some(15),
             trial_duration_days: 0,
+            require_signed_config: false,
             free_tier_enabled: false,
             app_version: None,
             base_url: "https://api.keylight.dev".into(),
@@ -66,6 +82,7 @@ pub struct KeylightConfigBuilder {
     trusted_keys: HashMap<String, String>,
     max_offline_days: Option<u32>,
     trial_duration_days: u32,
+    require_signed_config: bool,
     free_tier_enabled: bool,
     app_version: Option<String>,
     base_url: String,
@@ -83,6 +100,13 @@ impl KeylightConfigBuilder {
     }
     pub fn trial_duration_days(mut self, d: u32) -> Self {
         self.trial_duration_days = d;
+        self
+    }
+    /// Reject server-owned settings that do not carry a valid signature. See
+    /// [`KeylightConfig::require_signed_config`] before enabling it — the worker
+    /// only signs products that have a trial length configured.
+    pub fn require_signed_config(mut self, v: bool) -> Self {
+        self.require_signed_config = v;
         self
     }
     pub fn free_tier_enabled(mut self, v: bool) -> Self {
@@ -123,6 +147,7 @@ impl KeylightConfigBuilder {
             trusted_keys: self.trusted_keys,
             max_offline_days: self.max_offline_days,
             trial_duration_days: self.trial_duration_days,
+            require_signed_config: self.require_signed_config,
             free_tier_enabled: self.free_tier_enabled,
             app_version: self.app_version,
             base_url: self.base_url,

@@ -5,10 +5,37 @@ All notable changes to the Keylight Rust SDK are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.6.0] - 2026-09-06
 
 ### Added
 
+- **`require_signed_config` — Ed25519 verification of server-owned product
+  settings.** The Keylight worker has signed the trial length and free-tier flag
+  on every route that delivers them since 2026-09-06; nothing in this SDK
+  checked those signatures. `verify_config` now does, over the payload format
+  shared byte-for-byte with the Swift, C#, C++ and JS SDKs.
+
+  **Off by default, and it should stay off unless you know your product is
+  signed.** The worker signs a product's settings only once that product has a
+  trial length configured in the dashboard; every other product is served
+  unsigned, and enabling this against one of those would reject legitimate
+  responses and pin the install to the seed you compiled in.
+
+  When enabled, settings that do not verify are **never cached** — the SDK keeps
+  your seed rather than trusting what the server claimed. The check lives at the
+  single point where settings are merged, so no route can write settings around
+  it: `/config`, `validate` and the keyless beacon all pass through it. In
+  particular `validate` now carries the signature fields it previously dropped.
+
+  Trust is rooted in the `trusted_keys` you compile in. The SDK does not fetch a
+  keyset at runtime, on purpose: keys fetched over the same connection that
+  serves the settings would let anyone able to forge one forge the other. The
+  trade-off is that rotating to a new key id leaves builds already in the wild
+  on their last known settings until they update — they freeze, they do not
+  break.
+
+  Verification is pinned by a golden vector captured from the live worker, the
+  same one the other SDKs pin.
 - **`refresh_after_upgrade(timeout, poll_interval)` — brief poll-revalidation
   after an upgrade.** Call it when the customer returns from completing an
   upgrade so new entitlements unlock in the running app within seconds,
@@ -27,6 +54,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   normal refresh cadence still picks that up on its own schedule.
 - **Tauri plugin: `active_revalidate` and `refresh_after_upgrade` commands**,
   exposing both to the JS side of a Tauri app.
+
 
 ## [0.5.0] - 2026-09-05
 

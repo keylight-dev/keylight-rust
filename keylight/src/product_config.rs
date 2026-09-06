@@ -36,9 +36,9 @@ impl CachedProductConfig {
 ///
 /// Every field is optional because a worker predating this feature sends none
 /// of them, and that must leave a cached value alone rather than overwrite it.
-/// The signature fields are part of the frozen wire contract but are not
-/// verified by this SDK yet — they are accepted and ignored so that adding
-/// verification later is a change to this module alone.
+/// The signature fields are part of the frozen wire contract. They are checked
+/// by [`crate::verify_config`] when `require_signed_config` is set, and carried
+/// but unenforced otherwise.
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct ProductConfigFields {
     #[serde(default)]

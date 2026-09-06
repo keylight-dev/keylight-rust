@@ -54,6 +54,17 @@ struct ValidateResp {
     trial_duration_days: Option<u32>,
     #[serde(default)]
     free_tier_enabled: Option<bool>,
+    /// The settings' signature, appended for the same reason the settings were:
+    /// they ride here as well as on `/config`, and dropping them here would
+    /// leave `validate` as an unauthenticated way to write the config cache.
+    #[serde(default)]
+    issued_at: Option<i64>,
+    #[serde(default)]
+    expires_at: Option<i64>,
+    #[serde(default)]
+    kid: Option<String>,
+    #[serde(default)]
+    signature: Option<String>,
 }
 #[derive(Deserialize)]
 struct ErrorResp {
@@ -379,7 +390,12 @@ impl Keylight {
         self.absorb_config_fields(&ProductConfigFields {
             trial_duration_days: resp.trial_duration_days,
             free_tier_enabled: resp.free_tier_enabled,
-            ..Default::default()
+            // Carried, not defaulted away: a route that delivered the fields
+            // without their signature would be a way around the gate above.
+            issued_at: resp.issued_at,
+            expires_at: resp.expires_at,
+            kid: resp.kid.clone(),
+            signature: resp.signature.clone(),
         });
         if let Some(lease) = &resp.lease {
             self.verify_or_reject(lease)?;
@@ -555,6 +571,30 @@ impl Keylight {
         if fields.is_empty() {
             return;
         }
+
+        // The one place signatures are checked, and deliberately the only one.
+        // The settings ride on `/config`, on `validate`, and on the keyless
+        // beacon; verifying at any single route would leave the others as an
+        // unauthenticated way to write the same cache. Authentication is a
+        // property of the fields, not of the endpoint they arrived on.
+        //
+        // An unsigned response fails exactly as a badly signed one does —
+        // otherwise stripping the signature would be enough to bypass the
+        // check. Rejection keeps whatever is cached: fall back to the seed,
+        // never to what the server claimed.
+        if self.config.require_signed_config
+            && !crate::verify_config(
+                fields,
+                &self.config.tenant_id,
+                &self.config.product_id,
+                &self.config.trusted_keys,
+                Self::now(),
+                crate::SKEW_SECONDS,
+            )
+        {
+            return;
+        }
+
         let mut cached = self.cached_product_config();
         if let Some(days) = fields.trial_duration_days {
             cached.trial_duration_days = Some(days);

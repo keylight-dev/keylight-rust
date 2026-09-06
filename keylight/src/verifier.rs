@@ -112,3 +112,83 @@ mod tests {
         assert!(verify_lease(&lease, &keys, 1000 + 400, SKEW_SECONDS).expired);
     }
 }
+
+/// The canonical preimage for a signed product config.
+///
+/// Frozen across every SDK. Once a verifying client is in the wild these bytes
+/// cannot change: every shipped client would reject valid configs, and it
+/// cannot be fixed from the server. `free_tier_enabled` is the literal
+/// `true`/`false`.
+fn config_payload(
+    kid: &str,
+    tenant_id: &str,
+    product_id: &str,
+    issued_at: i64,
+    expires_at: i64,
+    trial_duration_days: u32,
+    free_tier_enabled: bool,
+) -> String {
+    format!(
+        "cfg1|{kid}|{tenant_id}|{product_id}|{issued_at}|{expires_at}|{trial_duration_days}|{}",
+        if free_tier_enabled { "true" } else { "false" }
+    )
+}
+
+/// Verify the Ed25519 signature over a set of server-owned product settings.
+///
+/// `tenant_id` and `product_id` come from the caller's own configuration, never
+/// from the body — that is what makes a config signed for another product fail
+/// rather than validate against its own claim.
+///
+/// Freshness applies to the wire, not to the cache: a response fetched outside
+/// its own window is rejected here, while a config already cached stays usable
+/// past that window, because expiring it would cut an offline user's trial
+/// short for no security gain.
+pub fn verify_config(
+    fields: &crate::ProductConfigFields,
+    tenant_id: &str,
+    product_id: &str,
+    trusted_keys: &HashMap<String, String>,
+    now_seconds: i64,
+    skew_seconds: i64,
+) -> bool {
+    let (issued_at, expires_at, kid, signature) = match (
+        fields.issued_at,
+        fields.expires_at,
+        fields.kid.as_deref(),
+        fields.signature.as_deref(),
+    ) {
+        (Some(i), Some(e), Some(k), Some(s)) if !s.is_empty() => (i, e, k, s),
+        // The four fields arrive together or not at all, so a partial set is
+        // unsigned rather than malformed.
+        _ => return false,
+    };
+
+    if now_seconds + skew_seconds < issued_at {
+        return false;
+    }
+    if expires_at + skew_seconds < now_seconds {
+        return false;
+    }
+
+    // The worker signs a complete pair or sends the response unsigned, so a
+    // partial config was never signable and must not be treated as if it were.
+    let (days, free_tier) = match (fields.trial_duration_days, fields.free_tier_enabled) {
+        (Some(d), Some(f)) => (d, f),
+        _ => return false,
+    };
+
+    let pub_b64 = match trusted_keys.get(kid) {
+        Some(p) => p,
+        None => return false,
+    };
+
+    (|| -> Option<bool> {
+        let pk_bytes: [u8; 32] = b64_decode(pub_b64)?.try_into().ok()?;
+        let vk = VerifyingKey::from_bytes(&pk_bytes).ok()?;
+        let sig = Signature::from_slice(&b64_decode(signature)?).ok()?;
+        let payload = config_payload(kid, tenant_id, product_id, issued_at, expires_at, days, free_tier);
+        Some(vk.verify(payload.as_bytes(), &sig).is_ok())
+    })()
+    .unwrap_or(false)
+}
