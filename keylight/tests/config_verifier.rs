@@ -16,7 +16,7 @@
 
 use std::collections::HashMap;
 
-use keylight::{verify_config, ProductConfigFields};
+use keylight::{ProductConfigFields, verify_config};
 
 // Captured from GET https://api.keylight.dev/anotheragence/getbarry/config on
 // 2026-09-06, worker version 717cfb7c. The public key is what
@@ -72,12 +72,24 @@ fn verifies_a_real_signature_from_the_live_worker() {
 
 #[test]
 fn rejects_a_config_signed_for_a_different_product() {
-    assert!(!verify_at(&golden(), TENANT_ID, "someotherapp", INSIDE_WINDOW, KID));
+    assert!(!verify_at(
+        &golden(),
+        TENANT_ID,
+        "someotherapp",
+        INSIDE_WINDOW,
+        KID
+    ));
 }
 
 #[test]
 fn rejects_a_config_signed_for_a_different_tenant() {
-    assert!(!verify_at(&golden(), "someothertenant", PRODUCT_ID, INSIDE_WINDOW, KID));
+    assert!(!verify_at(
+        &golden(),
+        "someothertenant",
+        PRODUCT_ID,
+        INSIDE_WINDOW,
+        KID
+    ));
 }
 
 #[test]
@@ -101,25 +113,55 @@ fn rejects_tampered_values() {
 fn rejects_an_absent_signature() {
     let mut unsigned = golden();
     unsigned.signature = None;
-    assert!(!verify_at(&unsigned, TENANT_ID, PRODUCT_ID, INSIDE_WINDOW, KID));
+    assert!(!verify_at(
+        &unsigned,
+        TENANT_ID,
+        PRODUCT_ID,
+        INSIDE_WINDOW,
+        KID
+    ));
 }
 
 // Rule 3: freshness applies to the wire.
 
 #[test]
 fn rejects_a_response_from_before_its_issued_at() {
-    assert!(!verify_at(&golden(), TENANT_ID, PRODUCT_ID, ISSUED_AT - SKEW - 1, KID));
+    assert!(!verify_at(
+        &golden(),
+        TENANT_ID,
+        PRODUCT_ID,
+        ISSUED_AT - SKEW - 1,
+        KID
+    ));
 }
 
 #[test]
 fn rejects_a_response_past_its_expiry() {
-    assert!(!verify_at(&golden(), TENANT_ID, PRODUCT_ID, EXPIRES_AT + SKEW + 1, KID));
+    assert!(!verify_at(
+        &golden(),
+        TENANT_ID,
+        PRODUCT_ID,
+        EXPIRES_AT + SKEW + 1,
+        KID
+    ));
 }
 
 #[test]
 fn accepts_clock_drift_within_the_skew_tolerance() {
-    assert!(verify_at(&golden(), TENANT_ID, PRODUCT_ID, EXPIRES_AT + SKEW - 1, KID));
-    assert!(verify_at(&golden(), TENANT_ID, PRODUCT_ID, ISSUED_AT - SKEW + 1, KID));
+    assert!(verify_at(
+        &golden(),
+        TENANT_ID,
+        PRODUCT_ID,
+        EXPIRES_AT + SKEW - 1,
+        KID
+    ));
+    assert!(verify_at(
+        &golden(),
+        TENANT_ID,
+        PRODUCT_ID,
+        ISSUED_AT - SKEW + 1,
+        KID
+    ));
 }
 
 /// The worker signs a complete pair or sends the response unsigned, so a partial
@@ -127,5 +169,11 @@ fn accepts_clock_drift_within_the_skew_tolerance() {
 #[test]
 fn rejects_a_partial_config() {
     let partial = fields(Some(1), None);
-    assert!(!verify_at(&partial, TENANT_ID, PRODUCT_ID, INSIDE_WINDOW, KID));
+    assert!(!verify_at(
+        &partial,
+        TENANT_ID,
+        PRODUCT_ID,
+        INSIDE_WINDOW,
+        KID
+    ));
 }

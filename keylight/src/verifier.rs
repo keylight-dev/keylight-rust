@@ -69,50 +69,6 @@ pub fn verify_lease(
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    // A real round-trip is covered by the conformance gate (tests/conformance.rs).
-    #[test]
-    fn unknown_kid_short_circuits() {
-        let lease = Lease {
-            kid: "k9".into(),
-            license_key_hash: "a".into(),
-            instance_id: "i".into(),
-            issued_at: 0,
-            expires_at: 100,
-            status: "active".into(),
-            signature: "x".into(),
-            entitlements: vec![],
-        };
-        let r = verify_lease(&lease, &HashMap::new(), 50, SKEW_SECONDS);
-        assert_eq!(
-            r,
-            VerifyResult {
-                kid_known: false,
-                signature_valid: false,
-                expired: false
-            }
-        );
-    }
-    #[test]
-    fn expiry_uses_skew() {
-        let lease = Lease {
-            kid: "k1".into(),
-            license_key_hash: "a".into(),
-            instance_id: "i".into(),
-            issued_at: 0,
-            expires_at: 1000,
-            status: "active".into(),
-            signature: "x".into(),
-            entitlements: vec![],
-        };
-        let keys = HashMap::new(); // kid unknown, but expired is computed regardless
-        assert!(!verify_lease(&lease, &keys, 1000 + 200, SKEW_SECONDS).expired);
-        assert!(verify_lease(&lease, &keys, 1000 + 400, SKEW_SECONDS).expired);
-    }
-}
-
 /// The canonical preimage for a signed product config.
 ///
 /// Frozen across every SDK. Once a verifying client is in the wild these bytes
@@ -187,8 +143,54 @@ pub fn verify_config(
         let pk_bytes: [u8; 32] = b64_decode(pub_b64)?.try_into().ok()?;
         let vk = VerifyingKey::from_bytes(&pk_bytes).ok()?;
         let sig = Signature::from_slice(&b64_decode(signature)?).ok()?;
-        let payload = config_payload(kid, tenant_id, product_id, issued_at, expires_at, days, free_tier);
+        let payload = config_payload(
+            kid, tenant_id, product_id, issued_at, expires_at, days, free_tier,
+        );
         Some(vk.verify(payload.as_bytes(), &sig).is_ok())
     })()
     .unwrap_or(false)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    // A real round-trip is covered by the conformance gate (tests/conformance.rs).
+    #[test]
+    fn unknown_kid_short_circuits() {
+        let lease = Lease {
+            kid: "k9".into(),
+            license_key_hash: "a".into(),
+            instance_id: "i".into(),
+            issued_at: 0,
+            expires_at: 100,
+            status: "active".into(),
+            signature: "x".into(),
+            entitlements: vec![],
+        };
+        let r = verify_lease(&lease, &HashMap::new(), 50, SKEW_SECONDS);
+        assert_eq!(
+            r,
+            VerifyResult {
+                kid_known: false,
+                signature_valid: false,
+                expired: false
+            }
+        );
+    }
+    #[test]
+    fn expiry_uses_skew() {
+        let lease = Lease {
+            kid: "k1".into(),
+            license_key_hash: "a".into(),
+            instance_id: "i".into(),
+            issued_at: 0,
+            expires_at: 1000,
+            status: "active".into(),
+            signature: "x".into(),
+            entitlements: vec![],
+        };
+        let keys = HashMap::new(); // kid unknown, but expired is computed regardless
+        assert!(!verify_lease(&lease, &keys, 1000 + 200, SKEW_SECONDS).expired);
+        assert!(verify_lease(&lease, &keys, 1000 + 400, SKEW_SECONDS).expired);
+    }
 }

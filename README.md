@@ -45,6 +45,8 @@ Licensing shouldn't mean bolting a heavyweight, phone-home-or-die SDK onto your 
 - [Refresh, Trials & Free Tier](#refresh-trials--free-tier)
 - [Lifecycle Events](#lifecycle-events)
 - [Configuration Reference](#configuration-reference)
+  - [Signed product settings](#signed-product-settings)
+  - [Post-upgrade refresh](#post-upgrade-refresh)
 - [CLI & Demo](#cli--demo)
 - [Conformance](#conformance)
 - [Documentation](#documentation)
@@ -338,12 +340,71 @@ Built with `KeylightConfig::builder(tenant_id, product_id, sdk_key)`:
 | `product_id` | `String` | — | Your product (required). |
 | `sdk_key` | `String` | — | Tenant SDK key (required), sent as `X-Keylight-SDK-Key` on every call. |
 | `trusted_keys` | `map<kid, pub>` | empty | Trusted Ed25519 public keys for offline verification (`.trusted_key()` or `fetch_keyset`). |
-| `max_offline_days` | `Option<u32>` | `None` | Offline grace window since last online validation. `None` = until the lease itself expires. |
-| `trial_duration_days` | `u32` | `14` | Local trial length. |
+| `max_offline_days` | `Option<u32>` | `Some(15)` | Offline grace window since last online validation. `None` = until the lease itself expires. |
+| `require_signed_config` | `bool` | `false` | Require server-owned product settings to carry a valid Ed25519 signature before they are cached. See [Signed product settings](#signed-product-settings). |
+| `trial_duration_days` | `u32` | `0` | Local trial-length *seed* (days). `0` = no trial unless the dashboard says otherwise. |
 | `free_tier_enabled` | `bool` | `false` | Resolve to `FreeTier` when there's no license/trial. |
 | `app_version` | `Option<String>` | `None` | Reported in telemetry. |
 | `base_url` | `String` | `https://api.keylight.dev` | API base URL. |
 | `key_prefix` | `Option<String>` | `None` | Client-side key-format check (e.g. `"PROD"`). |
+
+### Signed product settings
+
+The trial length and free-tier flag are **server-owned**: the Keylight worker delivers them on
+`/config`, on `validate`, and on the keyless beacon, and the SDK caches whatever it last heard.
+`require_signed_config` makes the SDK verify an Ed25519 signature over those settings before caching
+them; settings that do not verify are dropped and the compiled-in seed is kept.
+
+```rust
+let cfg = KeylightConfig::builder("your-tenant", "your-product", "sdk_live_…")
+    .trusted_key("k1", "<raw ed25519 public key, base64>")
+    .require_signed_config(true)
+    .build();
+```
+
+- **Off by default — leave it off unless your product is signed.** The worker signs a product's
+  settings only once that product has a **trial length configured in the dashboard**; every other
+  product is served unsigned, and enabling this against one of those rejects every legitimate
+  response and pins the install to its seed.
+- **Keys are compiled in via `trusted_keys`, never fetched at runtime.** A keyset fetched over the
+  same connection that serves the settings would let anyone able to forge one forge the other, so
+  the SDK deliberately does not do that.
+- **Rotation freezes, it does not break.** A build that only knows the old `kid` stops accepting new
+  settings and stays on its last cached values until it ships with the new key. Register both keys
+  for a deprecation window, exactly as for lease verification.
+- `verify_config(&fields, tenant_id, product_id, &trusted_keys, now_seconds, skew_seconds) -> bool`
+  is the check itself, exported for hosts that want to verify a `ProductConfigFields` payload
+  themselves. `tenant_id`/`product_id` come from *your* config, not the payload, so a config signed
+  for another product fails rather than validating against its own claim. Freshness (`issued_at` /
+  `expires_at`, with `skew_seconds` tolerance, `keylight::SKEW_SECONDS` = 300) applies to the wire
+  only — an already-cached config stays usable past its window.
+
+### Post-upgrade refresh
+
+`refresh_after_upgrade(timeout: Duration, poll_interval: Duration) -> bool` briefly poll-revalidates
+after a customer completes an upgrade, so new entitlements (or a mid-flight rejection) show up in the
+running app without waiting for the normal refresh cadence. It covers payment-webhook lag: checkout
+can finish in the browser slightly before the provider's webhook reaches Keylight.
+
+```rust
+use std::time::Duration;
+
+let kl = kl.clone(); // Arc<Keylight>
+std::thread::spawn(move || {
+    if kl.refresh_after_upgrade(Duration::from_secs(30), Duration::from_secs(2)) {
+        // entitlement set or state changed — refresh the UI
+    }
+});
+```
+
+- Re-validates every `poll_interval` (clamped to a **100 ms floor**) until the entitlement set or
+  the resolved state changes, or `timeout` elapses. Returns `true` on a change, `false` on timeout
+  or when no license is stored (no network call in that case).
+- **Blocking.** It sleeps between attempts and can take up to `timeout` to return (each sleep is
+  capped to the time remaining, so it never overshoots). Run it on a background thread, never on a
+  UI/main thread. The Tauri plugin's `refreshAfterUpgrade()` already does this for you.
+- A seat-only upgrade with no entitlement/state change is invisible to it and runs to `timeout`; the
+  normal refresh cadence still picks that up.
 
 ## CLI & Demo
 

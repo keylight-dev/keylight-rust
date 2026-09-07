@@ -77,7 +77,7 @@ pub mod lease;
 pub use lease::Lease;
 
 pub mod verifier;
-pub use verifier::{SKEW_SECONDS, VerifyResult, verify_lease, verify_config};
+pub use verifier::{SKEW_SECONDS, VerifyResult, verify_config, verify_lease};
 
 pub mod telemetry;
 

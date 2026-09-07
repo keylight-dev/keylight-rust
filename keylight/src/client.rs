@@ -977,10 +977,13 @@ impl Keylight {
                     return true;
                 }
             }
-            if Instant::now() >= deadline {
+            // Cap the sleep to the time remaining so the call never overshoots
+            // `timeout` by a poll interval; a zero remainder means we're done.
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
                 return false;
             }
-            std::thread::sleep(poll);
+            std::thread::sleep(poll.min(remaining));
         }
     }
     /// Sorted entitlement list from an optional lease (empty when there is none),

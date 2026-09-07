@@ -19,7 +19,7 @@ use ed25519_dalek::{Signer, SigningKey};
 use keylight::http::{HttpResponse, Transport, TransportOutcome};
 use keylight::store::device::FixedDeviceIdentity;
 use keylight::store::encrypted_file::EncryptedFileStore;
-use keylight::store::{account, LicenseStore};
+use keylight::store::{LicenseStore, account};
 use keylight::{Keylight, KeylightConfig};
 use std::sync::{Arc, Mutex};
 
@@ -91,7 +91,8 @@ fn signed_body(trial_days: u32, free_tier: bool, tenant: &str, product: &str) ->
         "cfg1|{KID}|{tenant}|{product}|{issued_at}|{expires_at}|{trial_days}|{}",
         if free_tier { "true" } else { "false" }
     );
-    let sig = base64::engine::general_purpose::STANDARD.encode(key.sign(payload.as_bytes()).to_bytes());
+    let sig =
+        base64::engine::general_purpose::STANDARD.encode(key.sign(payload.as_bytes()).to_bytes());
     format!(
         r#"{{"valid":true,"trial_duration_days":{trial_days},"free_tier_enabled":{free_tier},"issued_at":{issued_at},"expires_at":{expires_at},"kid":"{KID}","signature":"{sig}"}}"#
     )
@@ -107,7 +108,13 @@ struct Harness {
     store: Arc<dyn LicenseStore>,
 }
 
-fn harness(dir: &str, seed_days: u32, require_signed: bool, body: String, trusted_kid: &str) -> Harness {
+fn harness(
+    dir: &str,
+    seed_days: u32,
+    require_signed: bool,
+    body: String,
+    trusted_kid: &str,
+) -> Harness {
     // Unique per process: fixed names collide when two `cargo test` runs overlap,
     // which showed up once as a spurious failure.
     let d = std::env::temp_dir().join(format!("{dir}-{}", std::process::id()));

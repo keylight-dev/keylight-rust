@@ -104,9 +104,10 @@ if (changed) {
 }
 ```
 
-This call blocks on the Rust side for up to the timeout, so await it rather than calling it from a
-hot path (e.g. trigger it once when the app regains focus after an upgrade flow, not on every
-render).
+This call can take up to the timeout to resolve. It is declared `#[tauri::command(async)]`, so Tauri
+runs it on its blocking thread pool rather than the main thread and the UI stays responsive while it
+polls — but still `await` it once from a deliberate trigger (e.g. when the app regains focus after an
+upgrade flow), not from a hot path such as every render.
 
 ## License
 

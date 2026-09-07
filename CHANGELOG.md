@@ -5,6 +5,33 @@ All notable changes to the Keylight Rust SDK are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.1] - 2026-09-07
+
+### Fixed
+
+- **Tauri plugin: commands that hit the network no longer run on the main
+  thread.** In Tauri v2 a plain `#[tauri::command]` runs on the main thread, so
+  `refreshAfterUpgrade()` froze the UI for up to its 30 s timeout, and
+  `validate`, `checkOnLaunch`, `refreshIfNeeded`, `activeRevalidate`, `activate`
+  and `reportKeylessState` each stalled it for the length of an HTTP round
+  trip. The plugin's doc comment claimed the opposite. Every command that does
+  I/O is now `#[tauri::command(async)]`, which makes Tauri run it on its
+  blocking thread pool; command names and JS argument names are unchanged.
+- **`refresh_after_upgrade` never overshoots its `timeout`.** The deadline was
+  checked before sleeping, so the worst case was `timeout + poll_interval`.
+  Each sleep is now capped to the time remaining. The 100 ms floor on
+  `poll_interval` is unchanged.
+- `tauri-plugin-keylight-api` on npm now reports the same version as the crate
+  (it was stuck at 0.4.0).
+
+### Notes
+
+- Reminder from 0.6.0: `KeylightConfig` gained the public field
+  `require_signed_config`. `KeylightConfig` has no `Default` impl, so a
+  struct-literal `KeylightConfig { .. }` (the form `max_offline_days` points you
+  at) must now list it — `require_signed_config: false` keeps the previous
+  behaviour. Builder users are unaffected.
+
 ## [0.6.0] - 2026-09-06
 
 ### Added

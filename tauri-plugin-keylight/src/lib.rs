@@ -9,7 +9,13 @@ use tauri::{
 
 struct KeylightState(Arc<Keylight>);
 
-#[tauri::command]
+// Every command that performs network I/O (or otherwise blocks) is marked
+// `#[tauri::command(async)]`. In Tauri v2 a plain synchronous command runs on
+// the main thread; the `async` attribute on a non-async fn makes Tauri run it
+// on its blocking thread pool instead, so the UI never stalls behind ureq.
+// `has_entitlement` reads the cached lease only and stays synchronous.
+
+#[tauri::command(async)]
 fn activate(state: State<'_, KeylightState>, key: String) -> Result<bool, String> {
     state
         .0
@@ -18,7 +24,7 @@ fn activate(state: State<'_, KeylightState>, key: String) -> Result<bool, String
         .map_err(|e| e.to_string())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn validate(state: State<'_, KeylightState>) -> Result<bool, String> {
     state
         .0
@@ -33,14 +39,14 @@ fn has_entitlement(state: State<'_, KeylightState>, feature: String) -> bool {
 }
 
 /// Validate the stored license against the server (no staleness gate); call on app launch.
-#[tauri::command]
+#[tauri::command(async)]
 fn check_on_launch(state: State<'_, KeylightState>) -> Result<(), String> {
     state.0.check_on_launch().map_err(|e| e.to_string())
 }
 
 /// Re-validate only if the debounce/staleness policy says it's time.
 /// Returns the validation result (`true`/`false`) when a validation ran, `null` otherwise.
-#[tauri::command]
+#[tauri::command(async)]
 fn refresh_if_needed(state: State<'_, KeylightState>) -> Result<Option<bool>, String> {
     state
         .0
@@ -57,7 +63,7 @@ fn refresh_if_needed(state: State<'_, KeylightState>) -> Result<Option<bool>, St
 /// Returns `true`/`false` when a validation ran, `null` when suppressed by the
 /// debounce window, no license is stored, or the call was transient (network
 /// error) and state was left untouched.
-#[tauri::command]
+#[tauri::command(async)]
 fn active_revalidate(state: State<'_, KeylightState>) -> Option<bool> {
     state.0.active_revalidate().map(|r| r.valid)
 }
@@ -68,14 +74,16 @@ fn active_revalidate(state: State<'_, KeylightState>) -> Option<bool> {
 /// `poll_interval_secs` (default 2.0, clamped to a 100ms floor in the SDK)
 /// until `timeout_secs` (default 30.0) elapses or a change is observed.
 ///
-/// **Blocking.** Tauri dispatches synchronous commands off the main thread, so
-/// this is safe to call directly from the frontend, but it can take up to
-/// `timeout_secs` to resolve.
+/// **Blocking.** Tauri v2 runs plain synchronous commands on the main thread,
+/// which would freeze the UI for up to `timeout_secs`. This command is marked
+/// `#[tauri::command(async)]`, so Tauri dispatches it to its blocking thread
+/// pool instead; it is safe to `await` from the frontend, but it can still take
+/// up to `timeout_secs` to resolve.
 ///
 /// Returns `true` as soon as a change is detected, `false` on timeout or when
 /// no license is stored. Errors only on invalid (negative/NaN/infinite)
 /// duration input.
-#[tauri::command]
+#[tauri::command(async)]
 fn refresh_after_upgrade(
     state: State<'_, KeylightState>,
     timeout_secs: Option<f64>,
@@ -94,7 +102,7 @@ fn secs_to_duration(secs: f64) -> Result<Duration, String> {
 
 /// Send the anonymous keyless beacon. `keylessState` is the wire value:
 /// `"trial"`, `"free_tier"`, or `"expired"`.
-#[tauri::command]
+#[tauri::command(async)]
 fn report_keyless_state(
     state: State<'_, KeylightState>,
     keyless_state: String,
