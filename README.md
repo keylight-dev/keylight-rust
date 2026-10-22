@@ -108,13 +108,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .max_offline_days(7)                      // optional offline grace window
         .app_version(env!("CARGO_PKG_VERSION"))   // report app version (omitted if unset)
         .build();
-    if let Some((_, keys)) = keylight::keyset::fetch_keyset(
+    let (_, keys) = keylight::keyset::fetch_keyset(
         &keylight::http::ureq_transport::UreqTransport::default(),
         &cfg.base_url,
         &cfg.tenant_id,
-    ) {
-        cfg.trusted_keys.extend(keys);
-    }
+    )
+    .filter(|(_, keys)| !keys.is_empty())
+    .expect("Could not load signing keys; check the base URL, tenant ID and keyset response");
+    cfg.trusted_keys.extend(keys);
 
     let kl = Keylight::new(cfg)?;
 
@@ -142,25 +143,35 @@ Add the Rust-side Tauri v2 plugin and the JS bindings:
 
 ```bash
 # Rust side
-cargo add tauri-plugin-keylight
+cargo add keylight tauri-plugin-keylight
 # JavaScript side
 npm add tauri-plugin-keylight-api
 ```
 
-Register it with a prebuilt `KeylightConfig` (your app supplies tenant/product/keys):
+Register it with a `KeylightConfig` containing your tenant's trusted signing key.
+Fetch `https://api.keylight.dev/your-tenant/.well-known/keylight-keys` during setup.
+Find the entry in `keys` whose `kid` matches `primary_kid`, then replace both
+`.trusted_key(...)` placeholders below with that entry's `kid` and `public_key`.
+The public signing key is base64-encoded and separate from your SDK key.
 
 ```rust
 // src-tauri/src/main.rs
 use keylight::KeylightConfig;
 
 fn main() {
-    let cfg = KeylightConfig::builder("your-tenant", "your-product", "sdk_live_…").build();
+    let cfg = KeylightConfig::builder("your-tenant", "your-product", "sdk_live_…")
+        .trusted_key("your-key-id", "<raw ed25519 public key, base64>")
+        .build();
     tauri::Builder::default()
         .plugin(tauri_plugin_keylight::init(cfg))
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
 ```
+
+The plugin does not fetch signing keys automatically. A missing keyset or unknown
+key ID is a configuration error; a known key with a failed signature is rejected
+as an invalid lease. Rebuild and restart the Tauri app after changing pinned keys.
 
 Grant the plugin's default permission set in your capability file:
 

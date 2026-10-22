@@ -5,6 +5,19 @@ All notable changes to the Keylight Rust SDK are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-10-22
+
+### Fixed
+
+- Activation and validation now distinguish a missing trusted keyset
+  (`MissingTrustedKeys`), an unknown signing key ID (`UnknownSigningKey`), and
+  a failed signature (`LeaseVerificationFailed`). Configuration errors explain
+  how to supply the tenant's public signing keys; untrusted leases are still
+  rejected before license data is stored.
+  Callers exhaustively matching `KeylightError` must handle the two new variants.
+- Tauri setup examples now configure a trusted signing key and include the core
+  `keylight` dependency. The Rust quickstart reports failed or empty keyset fetches.
+
 ## [0.6.1] - 2026-09-07
 
 ### Fixed

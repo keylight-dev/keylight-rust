@@ -265,7 +265,16 @@ impl Keylight {
     }
 
     fn verify_or_reject(&self, lease: &Lease) -> Result<()> {
-        if self.verify(lease).is_trusted() {
+        if self.config.trusted_keys.is_empty() {
+            return Err(KeylightError::MissingTrustedKeys);
+        }
+        let verification = self.verify(lease);
+        if !verification.kid_known {
+            return Err(KeylightError::UnknownSigningKey {
+                kid: lease.kid.clone(),
+            });
+        }
+        if verification.is_trusted() {
             Ok(())
         } else {
             Err(KeylightError::LeaseVerificationFailed)

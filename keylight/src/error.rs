@@ -16,6 +16,14 @@ pub enum KeylightError {
     NetworkFailure(String),
     #[error("invalid server response")]
     InvalidResponse,
+    #[error(
+        "no trusted signing keys configured; add .trusted_key(kid, public_key_base64) using your tenant's /.well-known/keylight-keys endpoint"
+    )]
+    MissingTrustedKeys,
+    #[error(
+        "no trusted public key configured for signing key ID '{kid}'; add the matching kid and public_key from your tenant's /.well-known/keylight-keys endpoint"
+    )]
+    UnknownSigningKey { kid: String },
     #[error("lease signature verification failed")]
     LeaseVerificationFailed,
     #[error("storage error: {0}")]

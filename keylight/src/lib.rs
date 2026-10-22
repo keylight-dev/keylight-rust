@@ -19,13 +19,14 @@
 //! let mut cfg = KeylightConfig::builder("your-tenant", "your-product", "sdk_live_…")
 //!     .max_offline_days(7)
 //!     .build();
-//! if let Some((_, keys)) = keylight::keyset::fetch_keyset(
+//! let (_, keys) = keylight::keyset::fetch_keyset(
 //!     &keylight::http::ureq_transport::UreqTransport::default(),
 //!     &cfg.base_url,
 //!     &cfg.tenant_id,
-//! ) {
-//!     cfg.trusted_keys.extend(keys);
-//! }
+//! )
+//! .filter(|(_, keys)| !keys.is_empty())
+//! .expect("Could not load signing keys; check the base URL, tenant ID and keyset response");
+//! cfg.trusted_keys.extend(keys);
 //!
 //! let kl = Keylight::new(cfg)?;
 //! let result = kl.activate("USER-LICENSE-KEY")?;

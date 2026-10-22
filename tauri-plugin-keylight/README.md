@@ -13,6 +13,7 @@ published as [`tauri-plugin-keylight-api`](./package.json).
 ```toml
 [dependencies]
 tauri-plugin-keylight = { git = "https://github.com/keylight-dev/keylight-rust" }
+keylight = { git = "https://github.com/keylight-dev/keylight-rust" }
 ```
 
 **JavaScript:**
@@ -23,12 +24,19 @@ npm add tauri-plugin-keylight-api
 
 ## Register the plugin
 
+Fetch `https://api.keylight.dev/your-tenant/.well-known/keylight-keys` during setup,
+using your tenant ID. Find the entry in `keys` whose `kid` matches `primary_kid`.
+Use its `kid` and base64 `public_key` as the two `.trusted_key(...)` arguments
+below. The public signing key is separate from your SDK key.
+
 ```rust
 // src-tauri/src/main.rs
 use keylight::KeylightConfig;
 
 fn main() {
-    let cfg = KeylightConfig::builder("your-tenant", "your-product", "sdk_live_…").build();
+    let cfg = KeylightConfig::builder("your-tenant", "your-product", "sdk_live_…")
+        .trusted_key("your-key-id", "<raw ed25519 public key, base64>")
+        .build();
     tauri::Builder::default()
         .plugin(tauri_plugin_keylight::init(cfg))
         .run(tauri::generate_context!())
@@ -37,6 +45,10 @@ fn main() {
 ```
 
 ## Permissions
+
+The plugin does not fetch signing keys automatically. Configure them in Rust,
+then rebuild and restart the app before retrying activation. The SDK key
+authenticates the API request; the public signing key verifies the returned lease.
 
 Add the plugin's default permission set to your capability file:
 
